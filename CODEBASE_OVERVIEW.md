@@ -486,6 +486,10 @@ WooCommerce order management (`Order #92811`) ke comparison ke baad Laravel Fila
    - Default country `Saudi Arabia` set hai across all quick-edit and create forms.
    - Sabhi emoji aur informal icons remove kiye gaye hain taaki corporate enterprise standard maintain rahe.
 
+6. **Official Tax Invoice & Gift Card Layouts (1:1 WooCommerce Match):**
+   - **Printable Tax Invoice & PDF:** `resources/views/prints/tax_invoice.blade.php` aur `resources/views/pdf/order.blade.php` ko official live format ke according update kiya gaya hai: Grass Florist official logo, center ZATCA Phase-1 TLV QR Code, business CR/VAT registration block, `INV/{Year}/{OrderNumber}/{ID}` invoice serial number, 2x2 customer/delivery metadata grid, black table header (`Image - الصورة`, `Product - المنتج`, `Category - الفئة`, `Quantity - الكمية`, `Price/Unit - السعر/الوحدة`), thumbnail images, green Saudi Riyal symbol `﷼`, aur 5-row total calculation summary.
+   - **Florist Gift Card:** `resources/views/prints/gift_card.blade.php` me official parchment paper double-border frame background (`public/images/gift-card-bg.png`) with Grass logo, centered Arabic typography (`Cairo`, `Almarai`, `Tajawal`), aur proper breathing space above bottom logo.
+
 ---
 *Created for fast context retrieval. Future agent prompts can load this file directly to understand the complete architecture instantly.*
 

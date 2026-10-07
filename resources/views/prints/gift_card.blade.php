@@ -6,11 +6,17 @@
     <title>Gift Card - #{{ $order->order_number ?? $order->id }} - Grass Florist</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Playfair+Display:ital,wght@0,600;1,400&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
     
+    @php
+        $bgPath = public_path('images/gift-card-bg.png');
+        $bgSrc = file_exists($bgPath) ? asset('images/gift-card-bg.png') : '';
+        $bgBase64 = file_exists($bgPath) ? 'data:image/png;base64,' . base64_encode(file_get_contents($bgPath)) : '';
+    @endphp
+
     <style>
         @page {
-            size: 148mm 105mm; /* A6 Landscape Card / 6"x4" standard gift card size */
+            size: 100mm 169.25mm; /* Standard Vertical Florist Card (Ratio: 309x523) */
             margin: 0;
         }
 
@@ -21,14 +27,15 @@
         }
 
         body {
-            font-family: 'Cairo', 'Amiri', 'Playfair Display', serif;
-            background-color: #fdfbf7;
+            font-family: 'Cairo', 'Almarai', 'Tajawal', sans-serif;
+            background-color: #f7f6f2;
             color: #2c2523;
+            min-height: 100vh;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
-            min-height: 100vh;
-            padding: 15px;
+            padding: 30px 15px;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
         }
@@ -36,15 +43,15 @@
         /* Screen Controls Toolbar (Hidden when printing) */
         .toolbar {
             position: fixed;
-            top: 15px;
+            top: 20px;
             left: 50%;
             transform: translateX(-50%);
             background: #ffffff;
-            padding: 10px 20px;
-            border-radius: 30px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            padding: 10px 22px;
+            border-radius: 9999px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
             display: flex;
-            gap: 15px;
+            gap: 12px;
             align-items: center;
             z-index: 9999;
         }
@@ -54,7 +61,7 @@
             color: #ffffff;
             border: none;
             padding: 8px 18px;
-            border-radius: 20px;
+            border-radius: 9999px;
             font-size: 14px;
             font-weight: 600;
             cursor: pointer;
@@ -62,7 +69,7 @@
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            transition: background 0.2s;
+            transition: background 0.2s, transform 0.1s;
         }
 
         .btn:hover {
@@ -77,217 +84,238 @@
             background: #374151;
         }
 
-        /* Card Container (A6 Size: 148mm x 105mm) */
-        .card {
-            width: 148mm;
-            height: 105mm;
-            background: #fffdfa;
-            border: 2px solid #e7d8c9;
-            border-radius: 8px;
-            padding: 12mm 14mm;
+        .btn-tool {
+            background: #f3f4f6;
+            color: #374151;
+            border: 1px solid #d1d5db;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .btn-tool:hover {
+            background: #e5e7eb;
+        }
+
+        /* Card Container (Aspect Ratio: 309x523) */
+        .card-container {
             position: relative;
-            box-shadow: 0 10px 30px rgba(74, 52, 38, 0.08);
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
+            width: 360px;
+            height: 609px;
+            background: #fdfaf6;
+            border-radius: 8px;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.09), 0 2px 8px rgba(0, 0, 0, 0.04);
             overflow: hidden;
         }
 
-        /* Subtle Luxury Border Frame */
-        .card::before {
-            content: '';
+        /* Background Frame Image */
+        .card-bg-img {
             position: absolute;
-            top: 4mm;
-            left: 4mm;
-            right: 4mm;
-            bottom: 4mm;
-            border: 1px solid #ebd9c8;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: fill;
+            z-index: 1;
             pointer-events: none;
-            border-radius: 4px;
         }
 
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #f1e5d8;
-            padding-bottom: 6px;
-        }
-
-        .brand-title {
-            font-family: 'Playfair Display', serif;
-            font-size: 16px;
-            color: #065f46;
-            letter-spacing: 1px;
-            font-weight: 600;
-        }
-
-        .brand-sub {
-            font-size: 11px;
-            color: #8c786a;
-        }
-
-        .recipient-label {
-            font-size: 14px;
-            font-weight: 700;
-            color: #1f2937;
-        }
-
-        .card-body {
-            flex-grow: 1;
+        /* Content Overlay (Centered in Lower-Middle area between empty top and bottom logo) */
+        .card-content {
+            position: absolute;
+            top: 44%;
+            bottom: 21%;
+            left: 10%;
+            right: 10%;
+            z-index: 2;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             text-align: center;
-            padding: 8px 0;
+            box-sizing: border-box;
         }
 
-        .message-text {
+        /* Greeting Message Text */
+        .card-message {
+            font-family: 'Cairo', 'Almarai', 'Tajawal', sans-serif;
             font-size: 16px;
-            line-height: 1.6;
-            color: #372b25;
-            font-style: italic;
-            max-width: 90%;
+            font-weight: 500;
+            line-height: 1.7;
+            color: #2c2523;
+            text-align: center;
             word-wrap: break-word;
-            white-space: pre-line;
+            width: 100%;
+            margin-bottom: 15px;
+            transition: font-size 0.2s;
         }
 
-        .card-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            border-top: 1px solid #f1e5d8;
-            padding-top: 6px;
+        /* Sender / Sign-off Block */
+        .card-sender {
+            font-family: 'Cairo', 'Almarai', 'Tajawal', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            line-height: 1.45;
+            color: #1a1614;
+            text-align: center;
+            word-wrap: break-word;
+            width: 100%;
+            margin-top: 2px;
         }
 
-        .sender-box {
-            font-size: 13px;
-            font-weight: 600;
-            color: #065f46;
-        }
-
-        .song-qr-box {
+        /* Optional Song QR Code */
+        .card-song {
+            margin-top: 10px;
             display: flex;
             align-items: center;
-            gap: 8px;
-            text-align: left;
+            gap: 6px;
         }
 
-        .qr-img {
-            width: 48px;
-            height: 48px;
+        .card-song img {
+            width: 34px;
+            height: 34px;
             border-radius: 4px;
-            border: 1px solid #e5e7eb;
+            border: 1px solid #d4c5b5;
         }
 
-        .song-caption {
-            font-size: 10px;
-            color: #6b7280;
-            line-height: 1.2;
-        }
-
-        .order-meta {
+        .card-song-text {
             font-size: 9px;
-            color: #9ca3af;
+            color: #786c63;
+            line-height: 1.2;
+            text-align: right;
+        }
+
+        /* Order Metadata (Screen Only) */
+        .order-meta-info {
             position: absolute;
-            bottom: 6px;
-            left: 50%;
-            transform: translateX(-50%);
+            top: 15px;
+            right: 20px;
+            font-size: 10px;
+            color: #b0a498;
+            z-index: 3;
+            font-family: monospace;
+            direction: ltr;
         }
 
         @media print {
             body {
-                background: none;
-                padding: 0;
+                background: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                min-height: auto !important;
+                display: block !important;
             }
-            .toolbar {
+
+            .toolbar, .order-meta-info {
                 display: none !important;
             }
-            .card {
-                box-shadow: none;
-                border: 1px solid #d4c5b5;
-                margin: 0;
-                page-break-inside: avoid;
+
+            .card-container {
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                margin: 0 auto !important;
+                width: 100mm !important;
+                height: 169.25mm !important;
+                page-break-inside: avoid !important;
+                page-break-after: avoid !important;
+            }
+
+            .card-bg-img {
+                width: 100mm !important;
+                height: 169.25mm !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+
+            .card-content {
+                top: 44% !important;
+                bottom: 21% !important;
+                left: 10% !important;
+                right: 10% !important;
+            }
+
+            .card-message {
+                font-size: 13.5pt !important;
+                line-height: 1.65 !important;
+            }
+
+            .card-sender {
+                font-size: 16.5pt !important;
+                line-height: 1.4 !important;
             }
         }
     </style>
 </head>
 <body>
 
-    <!-- Screen Action Bar -->
+    <!-- Screen Toolbar -->
     <div class="toolbar">
         <button class="btn" onclick="window.print()">
             Print Gift Card
+        </button>
+        <button class="btn-tool" onclick="adjustFontSize(1)" title="Increase Font Size">
+            A+
+        </button>
+        <button class="btn-tool" onclick="adjustFontSize(-1)" title="Decrease Font Size">
+            A-
         </button>
         <button class="btn btn-secondary" onclick="window.close()">
             Close
         </button>
     </div>
 
+    <!-- Staff Meta Reference (Screen Only) -->
+    <div class="order-meta-info">
+        #{{ $order->order_number ?? $order->id }}
+    </div>
+
     <!-- Printable Gift Card -->
-    <div class="card">
-        
-        <!-- Header -->
-        <div class="card-header">
-            <div>
-                <div class="brand-title">GRASS FLORIST</div>
-                <div class="brand-sub">جراس فلوريست للزهور والهدايا</div>
-            </div>
-            
-            <div class="recipient-label">
-                @if(!empty($order->recipient_name))
-                    <span>إلى / To: <strong>{{ $order->recipient_name }}</strong></span>
-                @elseif(!empty($order->first_name))
-                    <span>إلى / To: <strong>{{ $order->first_name }} {{ $order->last_name }}</strong></span>
-                @else
-                    <span>إلى / To: <strong>Special Someone</strong></span>
-                @endif
-            </div>
-        </div>
+    <div class="card-container" id="giftCard">
+        <!-- Background Frame & Logo -->
+        <img src="{{ $bgBase64 ?: $bgSrc }}" class="card-bg-img" alt="Grass Florist Card Frame" />
 
-        <!-- Body Message -->
-        <div class="card-body">
-            <div class="message-text">
+        <!-- Card Content Overlay -->
+        <div class="card-content">
+            <!-- Greeting Message -->
+            <div class="card-message" id="cardMessage" dir="auto">
                 @if(!empty($order->delivery_message))
-                    "{{ $order->delivery_message }}"
+                    {!! nl2br(e($order->delivery_message)) !!}
                 @else
-                    "بكل حب وأطيب الأماني"
-                @endif
-            </div>
-        </div>
-
-        <!-- Footer -->
-        <div class="card-footer">
-            
-            <!-- Sender -->
-            <div class="sender-box">
-                @if(!empty($order->sender_name))
-                    <span>من / From: <strong>{{ $order->sender_name }}</strong></span>
-                @else
-                    <span>من / From: <strong>Someone who cares</strong></span>
+                    ألف مبروك بكل حب وأطيب الأماني
                 @endif
             </div>
 
-            <!-- Spotify / Song QR Code if provided -->
-            @if(!empty($order->song_link))
-                <div class="song-qr-box">
-                    <img class="qr-img" src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={{ urlencode($order->song_link) }}" alt="Song QR Code">
-                    <div class="song-caption">
-                        <strong>Song Attached</strong><br>
-                        <span>امسح للاستماع</span>
-                    </div>
+            <!-- Sender / Sign-off -->
+            @if(!empty($order->sender_name))
+                <div class="card-sender" id="cardSender" dir="auto">
+                    {{ $order->sender_name }}
                 </div>
             @endif
 
+            <!-- Optional Spotify / Song QR -->
+            @if(!empty($order->song_link))
+                <div class="card-song">
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data={{ urlencode($order->song_link) }}" alt="Song QR">
+                    <div class="card-song-text">
+                        <strong>Song Attached</strong><br>
+                        امسح للاستماع
+                    </div>
+                </div>
+            @endif
         </div>
-
-        <!-- Tracking Reference -->
-        <div class="order-meta">
-            #{{ $order->order_number ?? $order->id }} • {{ $order->delivery_date ?? date('Y-m-d') }}
-        </div>
-
     </div>
+
+    <script>
+        let currentSize = 16;
+        function adjustFontSize(delta) {
+            currentSize += delta;
+            if (currentSize < 11) currentSize = 11;
+            if (currentSize > 24) currentSize = 24;
+            document.getElementById('cardMessage').style.fontSize = currentSize + 'px';
+        }
+    </script>
 
 </body>
 </html>

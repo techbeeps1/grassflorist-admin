@@ -87,9 +87,9 @@ return [
 
     'faker_locale' => env('APP_FAKER_LOCALE', 'en_US'),
 
-    'currency' => env('APP_CURRENCY', 'INR'),
-    'currency_symbol' => env('APP_CURRENCY_SYMBOL', '₹'),
-    'currency_locale' => env('APP_CURRENCY_LOCALE', 'en_IN'),
+    'currency' => env('APP_CURRENCY', 'SAR'),
+    'currency_symbol' => env('APP_CURRENCY_SYMBOL', 'SAR '),
+    'currency_locale' => env('APP_CURRENCY_LOCALE', 'ar_SA'),
 
     /*
     |--------------------------------------------------------------------------

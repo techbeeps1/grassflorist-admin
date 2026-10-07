@@ -379,15 +379,19 @@ class OrderResource extends Resource
                                             ->content(function ($record) {
                                                 if (!$record) return '-';
                                                 $settings = \App\Models\GlobalSetting::current();
-                                                $trn = $settings->vat_registration_number ?? '300000000000003';
+                                                $sellerName = 'مؤسسة غراس السعودية';
+                                                $trn = $settings->vat_registration_number ?: '300553485900003';
                                                 $total = (float)$record->total_amount;
                                                 $tax = (float)($record->tax_amount ?? ($record->subtotal * 0.15));
-                                                $qrData = "Seller: " . ($settings->site_name ?? 'Grass Florist') . "\n"
-                                                        . "TRN: " . $trn . "\n"
-                                                        . "Date: " . ($record->created_at ?? now())->format('Y-m-d H:i:s') . "\n"
-                                                        . "Total: " . number_format($total, 2) . " SAR\n"
-                                                        . "VAT: " . number_format($tax, 2) . " SAR";
-                                                $qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=" . urlencode($qrData);
+                                                
+                                                $qrUrl = zatca_qr_image_url(
+                                                    sellerName: $sellerName,
+                                                    trn: $trn,
+                                                    timestamp: $record->created_at ?? now(),
+                                                    totalAmount: $total,
+                                                    vatAmount: $tax,
+                                                    size: 140
+                                                );
 
                                                 $taxInvoiceUrl = route('orders.tax_invoice', $record->id);
                                                 $giftCardUrl = route('orders.gift_card', $record->id);
@@ -397,7 +401,8 @@ class OrderResource extends Resource
                                                         <div class="flex items-center gap-4">
                                                             <img src="' . $qrUrl . '" alt="ZATCA E-Invoice QR" class="w-24 h-24 border border-gray-300 dark:border-gray-600 rounded bg-white p-1" />
                                                             <div class="space-y-1 text-xs text-gray-600 dark:text-gray-300">
-                                                                <p class="font-bold text-sm text-gray-900 dark:text-gray-100">ZATCA Compliant QR Code</p>
+                                                                <p class="font-bold text-sm text-gray-900 dark:text-gray-100">ZATCA Compliant QR Code (Phase 1 TLV)</p>
+                                                                <p>Seller: <span class="font-semibold">' . e($sellerName) . '</span></p>
                                                                 <p>Tax Registration (TRN): <span class="font-mono font-semibold">' . e($trn) . '</span></p>
                                                                 <p>Invoice Total: <span class="font-semibold">' . format_currency($total, 2) . '</span> (incl. ' . format_currency($tax, 2) . ' 15% VAT)</p>
                                                             </div>
@@ -526,12 +531,12 @@ class OrderResource extends Resource
                                                     <table class="w-full border-collapse">
                                                         <thead>
                                                             <tr class="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
-                                                                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">#</th>
+                                                                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider" style="width: 40px;">#</th>
                                                                 <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Item / SKU</th>
-                                                                <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Quantity</th>
-                                                                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Unit Price</th>
-                                                                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Saudi VAT (15%)</th>
-                                                                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Subtotal</th>
+                                                                <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider" style="width: 90px;">Quantity</th>
+                                                                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider" style="width: 120px;">Unit Price</th>
+                                                                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider" style="width: 130px;">Saudi VAT (15%)</th>
+                                                                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider" style="width: 120px;">Subtotal</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">';
@@ -543,33 +548,33 @@ class OrderResource extends Resource
                                                         : (format_translatable($item->product_name, 'en') ?: (format_translatable($item->product_name, 'ar') ?: ($item->product_name ?: ('Product #' . $item->product_id))));
                                                     
                                                     $sku = $item->sku ?: ($item->product?->sku ?: 'N/A');
-                                                    $img = $item->product_image ?? ($item->product?->image ?? null);
+                                                    $img = $item->product_image ?? ($item->product?->image ?? ($item->product?->thumbnail_image ?? null));
                                                     $imgHtml = '';
                                                     if ($img) {
                                                         $imgSrc = str_starts_with($img, 'http') ? $img : \Illuminate\Support\Facades\Storage::disk('public')->url($img);
-                                                        $imgHtml = '<img src="' . e($imgSrc) . '" alt="' . e((string)$productName) . '" class="w-12 h-12 rounded object-cover border border-gray-200 dark:border-gray-700 shrink-0" />';
+                                                        $imgHtml = '<div style="width: 52px; height: 52px; min-width: 52px; max-width: 52px; min-height: 52px; max-height: 52px; flex-shrink: 0; overflow: hidden; border-radius: 6px; border: 1px solid #e5e7eb; background: #f9fafb; display: flex; align-items: center; justify-content: center;"><img src="' . e($imgSrc) . '" alt="' . e((string)$productName) . '" style="width: 52px; height: 52px; max-width: 52px; max-height: 52px; object-fit: cover; display: block;" /></div>';
                                                     } else {
-                                                        $imgHtml = '<div class="w-12 h-12 rounded bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-400 text-xs shrink-0">No Img</div>';
+                                                        $imgHtml = '<div style="width: 52px; height: 52px; min-width: 52px; max-width: 52px; min-height: 52px; max-height: 52px; flex-shrink: 0; border-radius: 6px; background: #f3f4f6; border: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #9ca3af;">No Img</div>';
                                                     }
 
                                                     $subtotal = ($item->quantity ?? 1) * ($item->price ?? 0);
                                                     $itemVat = (float)($item->tax ?? ($subtotal * 0.15));
 
                                                     $html .= '<tr class="transition-colors duration-150">
-                                                        <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">' . $counter . '</td>
-                                                        <td class="px-4 py-3 text-sm">
-                                                            <div class="flex items-center gap-3">
+                                                        <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400" style="vertical-align: middle;">' . $counter . '</td>
+                                                        <td class="px-4 py-3 text-sm" style="vertical-align: middle;">
+                                                            <div style="display: flex; align-items: center; gap: 12px;">
                                                                 ' . $imgHtml . '
                                                                 <div>
-                                                                    <div class="font-semibold text-gray-900 dark:text-gray-100">' . e((string) $productName) . '</div>
-                                                                    <div class="text-xs text-gray-500 dark:text-gray-400 font-mono">SKU: ' . e((string) $sku) . '</div>
+                                                                    <div class="font-semibold text-gray-900 dark:text-gray-100" style="font-size: 14px; line-height: 1.3;">' . e((string) $productName) . '</div>
+                                                                    <div class="text-xs text-gray-500 dark:text-gray-400 font-mono" style="margin-top: 3px;">SKU: ' . e((string) $sku) . '</div>
                                                                 </div>
                                                             </div>
                                                         </td>
-                                                        <td class="px-4 py-3 text-sm text-center text-gray-700 dark:text-gray-300 font-medium">' . ($item->quantity ?? 1) . '</td>
-                                                        <td class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 font-medium">' . format_currency($item->price ?? 0, 2) . '</td>
-                                                        <td class="px-4 py-3 text-sm text-right text-emerald-600 dark:text-emerald-400 font-medium">' . format_currency($itemVat, 2) . '</td>
-                                                        <td class="px-4 py-3 text-sm text-right font-bold text-gray-900 dark:text-gray-100">' . format_currency($subtotal, 2) . '</td>
+                                                        <td class="px-4 py-3 text-sm text-center text-gray-700 dark:text-gray-300 font-medium" style="vertical-align: middle;">' . ($item->quantity ?? 1) . '</td>
+                                                        <td class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 font-medium" style="vertical-align: middle;">' . format_currency($item->price ?? 0, 2, 'SAR') . '</td>
+                                                        <td class="px-4 py-3 text-sm text-right text-emerald-600 dark:text-emerald-400 font-medium" style="vertical-align: middle;">' . format_currency($itemVat, 2, 'SAR') . '</td>
+                                                        <td class="px-4 py-3 text-sm text-right font-bold text-gray-900 dark:text-gray-100" style="vertical-align: middle;">' . format_currency($subtotal, 2, 'SAR') . '</td>
                                                     </tr>';
                                                     $counter++;
                                                 }
