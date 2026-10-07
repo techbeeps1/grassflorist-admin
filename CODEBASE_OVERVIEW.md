@@ -463,4 +463,29 @@ Project ke scale aur enterprise standards ko maintain karne ke liye ye mandatory
    - Technical documentation, commit messages, code comments, aur logs me bhi informal symbols avoid kiye jayein taaki enterprise client standards meet ho sakein.
 
 ---
+
+## 18. Order Lifecycle & WooCommerce Parity (Saudi Arabia & Florist Specifics)
+
+WooCommerce order management (`Order #92811`) ke comparison ke baad Laravel Filament `OrderResource` me complete feature parity integrate ki gayi hai:
+
+1. **9-Status Full Order Lifecycle:**
+   - `Pending payment`, `Processing`, `Printed`, `Shipped`, `Delivered`, `Completed`, `Cancelled`, `Refunded`, `Failed` (plus legacy backwards-compatibility for `new`, `pending`, `order_shipped`, `declined`).
+   - `app/Enums/OrderStatusEnum.php` aur `app/Filament/Resources/OrderResource.php` me status badges, quick-action status updates, bulk status updates, aur status filters fully aligned hain.
+
+2. **Failed Order Reason & Security Metadata:**
+   - Database table `orders` me `failed_order_reason`, `customer_ip`, aur `invoice_number` fields add kiye gaye hain.
+   - Gateway decline ya payment failure ka reason form aur table tooltips me clear dikhta hai.
+
+3. **PDF Document Barcodes & ZATCA E-Invoicing:**
+   - Order form me dynamic ZATCA QR code barcode preview integrate kiya gaya hai with TRN (Tax Registration Number), Saudi 15% VAT details, aur instant print shortcuts (`Print Tax Invoice`, `Print Florist Gift Card`).
+
+4. **Order Items Table Upgrade:**
+   - Line items table me product thumbnail image preview, Product SKU code, unit price, quantity, individual 15% Saudi VAT calculation column, aur total amount add kiya gaya hai.
+
+5. **Address Defaults & Enterprise Hygiene:**
+   - Default country `Saudi Arabia` set hai across all quick-edit and create forms.
+   - Sabhi emoji aur informal icons remove kiye gaye hain taaki corporate enterprise standard maintain rahe.
+
+---
 *Created for fast context retrieval. Future agent prompts can load this file directly to understand the complete architecture instantly.*
+

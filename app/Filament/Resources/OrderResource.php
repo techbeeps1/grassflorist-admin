@@ -291,57 +291,129 @@ class OrderResource extends Resource
                                                     ->rows(2)
                                                     ->columnSpanFull(),
 
+                                                Textarea::make('failed_order_reason')
+                                                    ->label('Failed Order Reason')
+                                                    ->placeholder('Payment gateway failure or card decline error...')
+                                                    ->visible(fn ($record, Forms\Get $get) => in_array($get('status'), ['failed', 'declined']) || !empty($record?->failed_order_reason))
+                                                    ->rows(2)
+                                                    ->columnSpanFull(),
+
+                                                TextInput::make('invoice_number')
+                                                    ->label('Tax Invoice Number')
+                                                    ->placeholder('e.g. INV/2026/92811/183')
+                                                    ->maxLength(100),
+
                                                 TextInput::make('tracking_id')
                                                     ->label('Tracking ID')
                                                     ->placeholder('e.g. DTDC12345678, EK123456789IN')
                                                     ->live()
-                                                    ->visible(fn (Forms\Get $get) => in_array($get('status'), ['order_shipped', 'completed']))
-                                                    ->required(fn (Forms\Get $get) => $get('status') === 'order_shipped'),
+                                                    ->visible(fn (Forms\Get $get) => in_array($get('status'), ['order_shipped', 'shipped', 'delivered', 'completed']))
+                                                    ->required(fn (Forms\Get $get) => in_array($get('status'), ['order_shipped', 'shipped'])),
 
                                                 TextInput::make('courier_partner')
                                                     ->label('Courier Partner Name')
-                                                    ->placeholder('Enter Courier Partner Name (e.g. DTDC, India Post)')
+                                                    ->placeholder('Enter Courier Partner Name (e.g. SMSA, Aramex, DTDC)')
                                                     ->live()
-                                                    ->visible(fn (Forms\Get $get) => in_array($get('status'), ['order_shipped', 'completed'])),
-
-                                
+                                                    ->visible(fn (Forms\Get $get) => in_array($get('status'), ['order_shipped', 'shipped', 'delivered', 'completed'])),
                                                 
                                                 Placeholder::make('payment_method')
                                                     ->label('Payment Method')
                                                     ->content(function ($record) {
                                                         $methods = [
-                                                            "cod"=>"Cash on Delivery",
-                                                            "card"=>"Credit Card",
-                                                            "razorpay"=>"Razorpay"
+                                                            "applepay" => "Apple Pay",
+                                                            "mada" => "Mada Debit Card",
+                                                            "hyperpay" => "HyperPay Gateway",
+                                                            "tabby" => "Tabby (Buy Now Pay Later)",
+                                                            "tamara" => "Tamara (Split in 3/4)",
+                                                            "stcpay" => "STC Pay",
+                                                            "cod" => "Cash on Delivery",
+                                                            "card" => "Credit Card",
+                                                            "razorpay" => "Razorpay",
                                                         ];
-                                                        return $methods[$record->payment_method] ?? $record->payment_method ?? 'N/A';
+                                                        $raw = strtolower((string)($record?->payment_method ?? ''));
+                                                        return $methods[$raw] ?? ($record?->payment_method ?? 'N/A');
+                                                    }),
+
+                                                Placeholder::make('payment_info_summary')
+                                                    ->label('Payment Timestamp & IP')
+                                                    ->content(function ($record) {
+                                                        if (!$record) return '-';
+                                                        $datePaid = $record->date_paid ? $record->date_paid->format('d M Y, h:i A') : 'Not Recorded';
+                                                        $ip = $record->customer_ip ? " | IP: {$record->customer_ip}" : '';
+                                                        return "Paid: {$datePaid}{$ip}";
                                                     }),
                                                 
                                                 Select::make('payment_status')
                                                     ->label('Payment Status')
                                                     ->options([
-                                                        "pending"=>"Pending",
-                                                        "paid"=>"Paid",
-                                                        "failed"=>"Failed",
-                                                        "refunded"=>"Refunded",
+                                                        "pending" => "Pending",
+                                                        "paid" => "Paid",
+                                                        "failed" => "Failed",
+                                                        "refunded" => "Refunded",
                                                     ])
                                                     ->required()
                                                     ->native(false),
                                                 
                                                 Placeholder::make('razorpay_order_id')
-                                                    ->label('Razorpay Order ID')
+                                                    ->label('Gateway Reference / Order ID')
                                                     ->content(function ($record) {
-                                                        return $record->razorpay_order_id ?? 'N/A';
+                                                        return $record->razorpay_order_id ?? $record->order_number ?? 'N/A';
                                                     })
-                                                    ->visible(fn ($record) => $record && $record->razorpay_order_id),
+                                                    ->visible(fn ($record) => $record && ($record->razorpay_order_id || $record->order_number)),
                                                 
                                                 Placeholder::make('razorpay_payment_id')
-                                                    ->label('Razorpay Payment ID')
+                                                    ->label('Transaction / Payment ID')
                                                     ->content(function ($record) {
                                                         return $record->razorpay_payment_id ?? 'N/A';
                                                     })
                                                     ->visible(fn ($record) => $record && $record->razorpay_payment_id),
                                             ]),
+                                    ]),
+
+                                // PDF Document Barcodes & ZATCA Invoice Box
+                                Section::make('PDF Document Barcodes & ZATCA Invoice')
+                                    ->description('Official Saudi E-Invoicing QR Code & Quick Print Actions')
+                                    ->schema([
+                                        Placeholder::make('zatca_qr_preview')
+                                            ->label('ZATCA E-Invoice QR Code Preview')
+                                            ->content(function ($record) {
+                                                if (!$record) return '-';
+                                                $settings = \App\Models\GlobalSetting::current();
+                                                $trn = $settings->vat_registration_number ?? '300000000000003';
+                                                $total = (float)$record->total_amount;
+                                                $tax = (float)($record->tax_amount ?? ($record->subtotal * 0.15));
+                                                $qrData = "Seller: " . ($settings->site_name ?? 'Grass Florist') . "\n"
+                                                        . "TRN: " . $trn . "\n"
+                                                        . "Date: " . ($record->created_at ?? now())->format('Y-m-d H:i:s') . "\n"
+                                                        . "Total: " . number_format($total, 2) . " SAR\n"
+                                                        . "VAT: " . number_format($tax, 2) . " SAR";
+                                                $qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=" . urlencode($qrData);
+
+                                                $taxInvoiceUrl = route('orders.tax_invoice', $record->id);
+                                                $giftCardUrl = route('orders.gift_card', $record->id);
+
+                                                return new \Illuminate\Support\HtmlString('
+                                                    <div class="flex flex-wrap items-center justify-between gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                                                        <div class="flex items-center gap-4">
+                                                            <img src="' . $qrUrl . '" alt="ZATCA E-Invoice QR" class="w-24 h-24 border border-gray-300 dark:border-gray-600 rounded bg-white p-1" />
+                                                            <div class="space-y-1 text-xs text-gray-600 dark:text-gray-300">
+                                                                <p class="font-bold text-sm text-gray-900 dark:text-gray-100">ZATCA Compliant QR Code</p>
+                                                                <p>Tax Registration (TRN): <span class="font-mono font-semibold">' . e($trn) . '</span></p>
+                                                                <p>Invoice Total: <span class="font-semibold">' . format_currency($total, 2) . '</span> (incl. ' . format_currency($tax, 2) . ' 15% VAT)</p>
+                                                            </div>
+                                                        </div>
+                                                        <div class="flex flex-wrap gap-2">
+                                                            <a href="' . $taxInvoiceUrl . '" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white rounded-md text-xs font-semibold hover:bg-emerald-700 transition shadow-sm">
+                                                                Print Tax Invoice
+                                                            </a>
+                                                            <a href="' . $giftCardUrl . '" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-2 bg-gray-800 text-white rounded-md text-xs font-semibold hover:bg-gray-900 transition shadow-sm">
+                                                                Print Florist Gift Card
+                                                            </a>
+                                                        </div>
+                                                    </div>
+                                                ');
+                                            })
+                                            ->columnSpanFull(),
                                     ]),
 
                                 // Order Financial Details - Show as view only
@@ -450,19 +522,19 @@ class OrderResource extends Resource
                                                     return '<div class="text-center text-gray-500 py-8">No products belonging to your store found in this order.</div>';
                                                 }
 
-                                                $html = '<div class="bg-white rounded-lg overflow-hidden shadow-sm border border-gray-200">
+                                                $html = '<div class="bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow-sm border border-gray-200 dark:border-gray-700">
                                                     <table class="w-full border-collapse">
                                                         <thead>
-                                                            <tr class="bg-gray-50 border-b border-gray-200">
-                                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
-                                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Model</th>
-                                                                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                                                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Unit Price</th>
-                                                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Subtotal</th>
+                                                            <tr class="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+                                                                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">#</th>
+                                                                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Item / SKU</th>
+                                                                <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Quantity</th>
+                                                                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Unit Price</th>
+                                                                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Saudi VAT (15%)</th>
+                                                                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Subtotal</th>
                                                             </tr>
                                                         </thead>
-                                                        <tbody class="divide-y divide-gray-200">';
+                                                        <tbody class="divide-y divide-gray-200 dark:divide-gray-700">';
                                                 
                                                 $counter = 1;
                                                 foreach ($items as $item) {
@@ -470,15 +542,34 @@ class OrderResource extends Resource
                                                         ? (format_translatable($item->product->name, 'en') ?: (format_translatable($item->product->name, 'ar') ?: ($item->product->sku ?: 'Product')))
                                                         : (format_translatable($item->product_name, 'en') ?: (format_translatable($item->product_name, 'ar') ?: ($item->product_name ?: ('Product #' . $item->product_id))));
                                                     
-                                                    $productModel = is_string($item->product?->model) ? $item->product->model : '';
+                                                    $sku = $item->sku ?: ($item->product?->sku ?: 'N/A');
+                                                    $img = $item->product_image ?? ($item->product?->image ?? null);
+                                                    $imgHtml = '';
+                                                    if ($img) {
+                                                        $imgSrc = str_starts_with($img, 'http') ? $img : \Illuminate\Support\Facades\Storage::disk('public')->url($img);
+                                                        $imgHtml = '<img src="' . e($imgSrc) . '" alt="' . e((string)$productName) . '" class="w-12 h-12 rounded object-cover border border-gray-200 dark:border-gray-700 shrink-0" />';
+                                                    } else {
+                                                        $imgHtml = '<div class="w-12 h-12 rounded bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-400 text-xs shrink-0">No Img</div>';
+                                                    }
+
                                                     $subtotal = ($item->quantity ?? 1) * ($item->price ?? 0);
+                                                    $itemVat = (float)($item->tax ?? ($subtotal * 0.15));
+
                                                     $html .= '<tr class="transition-colors duration-150">
-                                                        <td class="px-4 py-3 text-sm text-gray-500">' . $counter . '</td>
-                                                        <td class="px-4 py-3 text-sm font-medium text-gray-700">' . e((string) $productName) . '</td>
-                                                        <td class="px-4 py-3 text-sm font-medium text-gray-700">' . e($productModel) . '</td>
-                                                        <td class="px-4 py-3 text-sm text-center text-gray-700">' . ($item->quantity ?? 1) . '</td>
-                                                        <td class="px-4 py-3 text-sm text-right text-gray-700">' . format_currency($item->price ?? 0, 2) . '</td>
-                                                        <td class="px-4 py-3 text-sm text-right font-semibold text-gray-700">' . format_currency($subtotal, 2) . '</td>
+                                                        <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">' . $counter . '</td>
+                                                        <td class="px-4 py-3 text-sm">
+                                                            <div class="flex items-center gap-3">
+                                                                ' . $imgHtml . '
+                                                                <div>
+                                                                    <div class="font-semibold text-gray-900 dark:text-gray-100">' . e((string) $productName) . '</div>
+                                                                    <div class="text-xs text-gray-500 dark:text-gray-400 font-mono">SKU: ' . e((string) $sku) . '</div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td class="px-4 py-3 text-sm text-center text-gray-700 dark:text-gray-300 font-medium">' . ($item->quantity ?? 1) . '</td>
+                                                        <td class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 font-medium">' . format_currency($item->price ?? 0, 2) . '</td>
+                                                        <td class="px-4 py-3 text-sm text-right text-emerald-600 dark:text-emerald-400 font-medium">' . format_currency($itemVat, 2) . '</td>
+                                                        <td class="px-4 py-3 text-sm text-right font-bold text-gray-900 dark:text-gray-100">' . format_currency($subtotal, 2) . '</td>
                                                     </tr>';
                                                     $counter++;
                                                 }
@@ -650,27 +741,36 @@ class OrderResource extends Resource
                     ->sortable()
                     ->searchable()
                     ->badge()
-                    ->colors([
-                        'gray' => 'new',
-                        'warning' => 'pending',
-                        'info' => 'processing',
-                        'primary' => 'order_shipped',
-                        'success' => 'completed',
-                        'danger' => 'declined',
-                        'danger' => 'cancelled',
-                        'purple' => 'refunded',
-                    ])
-                    ->icons([
-                        'heroicon-o-clock' => 'new',
-                        'heroicon-o-exclamation-circle' => 'pending',
-                        'heroicon-o-arrow-path' => 'processing',
-                        'heroicon-o-truck' => 'order_shipped',
-                        'heroicon-o-check-circle' => 'completed',
-                        'heroicon-o-x-circle' => 'declined',
-                        'heroicon-o-x-mark' => 'cancelled',
-                        'heroicon-o-arrow-uturn-left' => 'refunded',
-                    ])
+                    ->color(fn ($state): string => match (strtolower((string) $state)) {
+                        'new' => 'gray',
+                        'pending_payment', 'pending' => 'warning',
+                        'processing' => 'info',
+                        'printed' => 'primary',
+                        'shipped', 'order_shipped' => 'info',
+                        'delivered', 'completed' => 'success',
+                        'refunded' => 'purple',
+                        'failed', 'declined', 'cancelled' => 'danger',
+                        default => 'gray',
+                    })
+                    ->icon(fn ($state): ?string => match (strtolower((string) $state)) {
+                        'new' => 'heroicon-o-clock',
+                        'pending_payment' => 'heroicon-o-credit-card',
+                        'pending' => 'heroicon-o-exclamation-circle',
+                        'processing' => 'heroicon-o-arrow-path',
+                        'printed' => 'heroicon-o-printer',
+                        'shipped', 'order_shipped' => 'heroicon-o-truck',
+                        'delivered' => 'heroicon-o-gift',
+                        'completed' => 'heroicon-o-check-circle',
+                        'refunded' => 'heroicon-o-arrow-uturn-left',
+                        'failed' => 'heroicon-o-x-circle',
+                        'declined' => 'heroicon-o-x-circle',
+                        'cancelled' => 'heroicon-o-x-mark',
+                        default => null,
+                    })
                     ->description(function ($record) {
+                        if ($record->status === 'failed' && !empty($record->failed_order_reason)) {
+                            return 'Failure: ' . Str::limit($record->failed_order_reason, 35);
+                        }
                         if ((in_array($record->status, ['cancelled', 'declined', 'payment_cancelled']) || str_contains((string)$record->status, 'cancel')) && !empty($record->cancellation_reason)) {
                             $prefix = $record->cancelled_by === 'customer' 
                                 ? 'By User: ' 
@@ -679,13 +779,16 @@ class OrderResource extends Resource
                                     : ($record->cancelled_by === 'payment_failed' ? 'Payment Failed: ' : 'Reason: '));
                             return $prefix . Str::limit($record->cancellation_reason, 35);
                         }
-                        if (in_array($record->status, ['order_shipped', 'Shipped', 'completed', 'Complete']) && (!empty($record->tracking_id) || !empty($record->courier_partner))) {
+                        if (in_array($record->status, ['order_shipped', 'shipped', 'Shipped', 'completed', 'Complete']) && (!empty($record->tracking_id) || !empty($record->courier_partner))) {
                             $parts = array_filter([$record->courier_partner, $record->tracking_id]);
                             return implode(' - ', $parts);
                         }
                         return null;
                     })
                     ->tooltip(function ($record) {
+                        if ($record->status === 'failed' && !empty($record->failed_order_reason)) {
+                            return 'Failed Reason: ' . $record->failed_order_reason;
+                        }
                         if ((in_array($record->status, ['cancelled', 'declined', 'payment_cancelled']) || str_contains((string)$record->status, 'cancel')) && !empty($record->cancellation_reason)) {
                             $prefix = $record->cancelled_by === 'customer' 
                                 ? 'Cancelled by Customer: ' 
@@ -694,7 +797,7 @@ class OrderResource extends Resource
                                     : ($record->cancelled_by === 'payment_failed' ? 'Payment Failed / Cancelled: ' : 'Reason: '));
                             return $prefix . $record->cancellation_reason;
                         }
-                        if (in_array($record->status, ['order_shipped', 'Shipped', 'completed', 'Complete']) && (!empty($record->tracking_id) || !empty($record->courier_partner))) {
+                        if (in_array($record->status, ['order_shipped', 'shipped', 'Shipped', 'completed', 'Complete']) && (!empty($record->tracking_id) || !empty($record->courier_partner))) {
                             return 'Courier: ' . ($record->courier_partner ?? 'N/A') . ' | Tracking: ' . ($record->tracking_id ?? 'N/A');
                         }
                         return null;
@@ -853,14 +956,19 @@ class OrderResource extends Resource
 
                 Tables\Filters\SelectFilter::make('status')
                     ->options([
-                        "new"=>"New",
-                        "pending"=>"Pending",
-                        "processing"=>"Processing",
-                        "order_shipped"=>"Order Shipped",
-                        "completed"=>"Completed",
-                        "declined"=>"Declined",
-                        "cancelled"=>"Cancelled",
-                        "refunded"=>"Refunded",
+                        "pending_payment" => "Pending Payment",
+                        "processing" => "Processing",
+                        "printed" => "Printed",
+                        "shipped" => "Shipped",
+                        "delivered" => "Delivered",
+                        "completed" => "Completed",
+                        "cancelled" => "Cancelled",
+                        "refunded" => "Refunded",
+                        "failed" => "Failed",
+                        "new" => "New",
+                        "pending" => "Pending (Review)",
+                        "order_shipped" => "Order Shipped (Legacy)",
+                        "declined" => "Declined (Legacy)",
                     ]),
                 
                 Tables\Filters\SelectFilter::make('payment_status')
@@ -962,7 +1070,7 @@ class OrderResource extends Resource
                                 'city' => $record->city,
                                 'state' => $record->state,
                                 'zip_code' => $record->zip_code,
-                                'country' => $record->country ?? 'India',
+                                'country' => $record->country ?? 'Saudi Arabia',
                             ]);
                         })
                         ->form([
@@ -976,7 +1084,7 @@ class OrderResource extends Resource
                                     TextInput::make('city')->label('City'),
                                     TextInput::make('state')->label('State/Province'),
                                     TextInput::make('zip_code')->label('Postal Code / PIN'),
-                                    TextInput::make('country')->label('Country')->default('India'),
+                                    TextInput::make('country')->label('Country')->default('Saudi Arabia'),
                                 ]),
                         ])
                         ->action(function ($record, array $data) {
@@ -1004,14 +1112,19 @@ class OrderResource extends Resource
                         ->form([
                             Select::make('status')
                                 ->options([
-                                    "new"=>"New",
-                                    "pending"=>"Pending",
-                                    "processing"=>"Processing",
-                                    "order_shipped"=>"Order Shipped",
-                                    "completed"=>"Completed",
-                                    "declined"=>"Declined",
-                                    "cancelled"=>"Cancelled",
-                                    "refunded"=>"Refunded",
+                                    "pending_payment" => "Pending Payment",
+                                    "processing" => "Processing",
+                                    "printed" => "Printed",
+                                    "shipped" => "Shipped",
+                                    "delivered" => "Delivered",
+                                    "completed" => "Completed",
+                                    "cancelled" => "Cancelled",
+                                    "refunded" => "Refunded",
+                                    "failed" => "Failed",
+                                    "new" => "New",
+                                    "pending" => "Pending (Review)",
+                                    "order_shipped" => "Order Shipped (Legacy)",
+                                    "declined" => "Declined (Legacy)",
                                 ])
                                 ->required()
                                 ->live(),
@@ -1020,15 +1133,21 @@ class OrderResource extends Resource
                                 ->schema([
                                     TextInput::make('tracking_id')
                                         ->label('Tracking ID')
-                                        ->placeholder('e.g. DTDC12345678')
-                                        ->visible(fn (Forms\Get $get) => in_array($get('status'), ['order_shipped', 'completed'])),
+                                        ->placeholder('e.g. SMSA12345678')
+                                        ->visible(fn (Forms\Get $get) => in_array($get('status'), ['order_shipped', 'shipped', 'delivered', 'completed'])),
 
                                     TextInput::make('courier_partner')
                                         ->label('Courier Partner Name')
-                                        ->placeholder('Enter Courier Partner Name')
-                                        ->visible(fn (Forms\Get $get) => in_array($get('status'), ['order_shipped', 'completed'])),
+                                        ->placeholder('Enter Courier Partner Name (e.g. SMSA, Aramex)')
+                                        ->visible(fn (Forms\Get $get) => in_array($get('status'), ['order_shipped', 'shipped', 'delivered', 'completed'])),
                                 ])
-                                ->visible(fn (Forms\Get $get) => in_array($get('status'), ['order_shipped', 'completed'])),
+                                ->visible(fn (Forms\Get $get) => in_array($get('status'), ['order_shipped', 'shipped', 'delivered', 'completed'])),
+
+                            Textarea::make('failed_order_reason')
+                                ->label('Failed Order Reason')
+                                ->placeholder('Enter reason why order or payment failed...')
+                                ->visible(fn (Forms\Get $get) => $get('status') === 'failed')
+                                ->rows(2),
 
                             Select::make('cancellation_reason_preset')
                                 ->label('Cancellation Reason Preset')
@@ -1069,6 +1188,9 @@ class OrderResource extends Resource
                             }
                             if (isset($data['courier_partner'])) {
                                 $updateData['courier_partner'] = $data['courier_partner'];
+                            }
+                            if ($data['status'] === 'failed' && isset($data['failed_order_reason'])) {
+                                $updateData['failed_order_reason'] = $data['failed_order_reason'];
                             }
                             if (in_array($data['status'], ['cancelled', 'declined'])) {
                                 $updateData['cancellation_reason'] = $data['cancellation_reason'] ?? null;
@@ -1194,14 +1316,19 @@ class OrderResource extends Resource
                         ->form([
                             Select::make('status')
                                 ->options([
-                                    "new"=>"New",
-                                    "pending"=>"Pending",
-                                    "processing"=>"Processing",
-                                    "order_shipped"=>"Order Shipped",
-                                    "completed"=>"Completed",
-                                    "declined"=>"Declined",
-                                    "cancelled"=>"Cancelled",
-                                    "refunded"=>"Refunded",
+                                    "pending_payment" => "Pending Payment",
+                                    "processing" => "Processing",
+                                    "printed" => "Printed",
+                                    "shipped" => "Shipped",
+                                    "delivered" => "Delivered",
+                                    "completed" => "Completed",
+                                    "cancelled" => "Cancelled",
+                                    "refunded" => "Refunded",
+                                    "failed" => "Failed",
+                                    "new" => "New",
+                                    "pending" => "Pending",
+                                    "order_shipped" => "Order Shipped",
+                                    "declined" => "Declined",
                                 ])
                                 ->required(),
                         ])
