@@ -160,12 +160,12 @@ class OrderResource extends Resource
 
                                                 TextInput::make('country')
                                                     ->label('Country')
-                                                    ->default('India'),
+                                                    ->default('Saudi Arabia'),
                                             ]),
                                     ]),
 
-                                // 🌸 Florist & Gift Delivery Section
-                                Section::make('🌸 Florist & Gift Delivery Details')
+                                // Florist & Gift Delivery Section
+                                Section::make('Florist & Gift Delivery Details')
                                     ->schema([
                                         Grid::make(3)
                                             ->schema([
@@ -179,7 +179,7 @@ class OrderResource extends Resource
                                                     ->placeholder('e.g. +966 50 123 4567'),
 
                                                 TextInput::make('sender_name')
-                                                    ->label('Sender Name')
+                                                    ->label('Sender Name on Card')
                                                     ->placeholder('e.g. Mohammed'),
 
                                                 Forms\Components\DatePicker::make('delivery_date')
@@ -196,7 +196,7 @@ class OrderResource extends Resource
                                                     ->maxLength(10),
 
                                                 Textarea::make('delivery_message')
-                                                    ->label('Gift Card Message 💌')
+                                                    ->label('Gift Card Message')
                                                     ->placeholder('Message written by sender on the gift card...')
                                                     ->rows(3)
                                                     ->columnSpanFull(),
@@ -214,7 +214,7 @@ class OrderResource extends Resource
                                                     ->visible(fn (?Order $record) => filled($record?->source_id)),
 
                                                 TextInput::make('location_link')
-                                                    ->label('Google Maps / Location Link 📍')
+                                                    ->label('Google Maps / Location Link')
                                                     ->prefixIcon('heroicon-o-map-pin')
                                                     ->columnSpanFull(),
                                             ]),
@@ -234,14 +234,18 @@ class OrderResource extends Resource
                                                 Select::make('status')
                                                     ->label('Order Status')
                                                     ->options([
-                                                        "new"=>"New",
-                                                        "pending"=>"Pending",
-                                                        "processing"=>"Processing",
-                                                        'order_shipped'=>"Order Shipped",
-                                                        "completed"=>"Order Completed/Delivered",
-                                                        "cancelled"=>"Order Cancelled",
-                                                        "declined"=>"Order Declined",
-                                                        "refunded"=>"Refunded",
+                                                        "pending_payment" => "Pending payment",
+                                                        "pending" => "Pending (Legacy)",
+                                                        "processing" => "Processing",
+                                                        "printed" => "Printed",
+                                                        "shipped" => "Shipped",
+                                                        "order_shipped" => "Shipped (Legacy)",
+                                                        "delivered" => "Delivered",
+                                                        "completed" => "Completed",
+                                                        "cancelled" => "Cancelled",
+                                                        "refunded" => "Refunded",
+                                                        "failed" => "Failed",
+                                                        "declined" => "Declined (Legacy)",
                                                     ])
                                                     ->required()
                                                     ->live()

@@ -42,6 +42,11 @@ Route::get('/orders/{id}/gift-card', [\App\Http\Controllers\Admin\OrderPrintCont
 Route::get('/orders/{id}/tax-invoice', [\App\Http\Controllers\Admin\OrderPrintController::class, 'printTaxInvoice'])
     ->name('orders.tax_invoice');
 
+// 📜 Swagger API Documentation UI (OpenAPI 3.1)
+Route::get('/docs/swagger', function () {
+    return view('swagger');
+})->name('docs.swagger');
+
  // Route::get('/api/categories', [CategoryController::class, 'index']);
  // Route::get('/api/products', [ProductController::class, 'index']);
  // Route::get('/api/products/{slug}', [ProductController::class, 'show']);

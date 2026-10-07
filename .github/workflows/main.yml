@@ -1,0 +1,48 @@
+name: Deploy Next.js to Cloudways
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to Cloudways via SSH Password
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+
+            cd /home/bookwindow-admin/htdocs/admin.bookwindow.in/public/
+            
+
+            echo "1. Pulling latest code"
+            git pull origin main
+
+            echo "2. Installing Composer dependencies..."
+            composer install --no-dev --optimize-autoloader --no-interaction
+
+            echo "3. Running Database Migrations..."
+            php artisan migrate --force
+
+            echo "4. Optimizing Laravel & Filament..."
+            php artisan optimize:clear
+            php artisan optimize
+            php artisan filament:optimize
+            php artisan icons:cache
+
+            
+
+
+
+
+
+
+            echo "✅ Deployment successful"
