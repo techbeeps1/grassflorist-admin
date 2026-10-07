@@ -171,6 +171,29 @@ class Product extends Model
         return $this->is_visible == 1;
     }
 
+    // Helper: Full Public Image URL
+    public function getImageUrlAttribute(): ?string
+    {
+        if (empty($this->image)) {
+            return null;
+        }
+        return str_starts_with($this->image, 'http')
+            ? $this->image
+            : asset('storage/' . $this->image);
+    }
+
+    // Helper: Full Gallery Images URLs
+    public function getGalleryUrlsAttribute(): array
+    {
+        $gallery = $this->gallery ?? [];
+        if (!is_array($gallery)) {
+            return [];
+        }
+        return array_map(function ($img) {
+            return str_starts_with($img, 'http') ? $img : asset('storage/' . $img);
+        }, $gallery);
+    }
+
     // Boot Method - Auto set updated_by
     protected static function booted(): void
     {

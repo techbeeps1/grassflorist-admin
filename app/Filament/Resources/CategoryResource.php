@@ -207,6 +207,7 @@ class CategoryResource extends Resource
             ->columns([
                 Tables\Columns\ImageColumn::make('cat_image')
                     ->label('Image')
+                    ->disk('public')
                     ->circular()
                     ->defaultImageUrl('/placeholder-category.png'),
 

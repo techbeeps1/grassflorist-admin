@@ -13,6 +13,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class StoreImportService
@@ -189,7 +190,11 @@ class StoreImportService
                 ];
             }
             if ($image) {
-                $category->cat_image = $image;
+                if (!empty($category->cat_image) && !str_starts_with($category->cat_image, 'http')) {
+                    // Preserve existing local storage image
+                } else {
+                    $category->cat_image = $this->resolveLocalImagePath($image, 'categories');
+                }
             }
             $category->is_visible = true;
             $category->meta_data = [
@@ -234,7 +239,11 @@ class StoreImportService
                 ];
             }
             if ($image) {
-                $category->cat_image = $image;
+                if (!empty($category->cat_image) && !str_starts_with($category->cat_image, 'http')) {
+                    // Preserve existing local storage image
+                } else {
+                    $category->cat_image = $this->resolveLocalImagePath($image, 'categories');
+                }
             }
             $category->is_visible = true;
             $category->meta_data = [
@@ -758,9 +767,15 @@ class StoreImportService
                 ];
             }
             if ($featuredImage) {
-                $product->image = $featuredImage;
+                if (!empty($product->image) && !str_starts_with($product->image, 'http')) {
+                    // Preserve existing local storage image
+                } else {
+                    $product->image = $this->resolveLocalImagePath($featuredImage, 'products');
+                }
             }
-            $product->gallery = $gallery;
+            if (!empty($gallery)) {
+                $product->gallery = array_map(fn ($g) => $this->resolveLocalImagePath($g, 'products/gallery'), $gallery);
+            }
             $product->is_visible = ($enItem['status'] ?? 'publish') === 'publish';
             $product->type = 'Other';
             $product->meta_data = [
@@ -1181,5 +1196,43 @@ class StoreImportService
             'imported' => $imported,
             'total_posts' => count($postsAr) + count($postsEn),
         ];
+    }
+
+    /**
+     * Convert an external image URL to a local public storage path if the image exists locally.
+     */
+    public function resolveLocalImagePath(?string $url, string $directory): ?string
+    {
+        if (empty($url)) {
+            return null;
+        }
+
+        if (!str_starts_with($url, 'http://') && !str_starts_with($url, 'https://')) {
+            return $url;
+        }
+
+        $parsedPath = parse_url($url, PHP_URL_PATH);
+        if (!$parsedPath) {
+            return $url;
+        }
+
+        $cleanFilename = urldecode(basename($parsedPath));
+        $info = pathinfo($cleanFilename);
+        $name = Str::slug($info['filename'] ?? 'file');
+        if (empty($name)) {
+            $name = 'media-' . substr(md5($url), 0, 10);
+        }
+        $ext = strtolower($info['extension'] ?? 'jpg');
+        if (empty($ext) || strlen($ext) > 5) {
+            $ext = 'jpg';
+        }
+
+        $relativePath = "{$directory}/{$name}.{$ext}";
+
+        if (Storage::disk('public')->exists($relativePath)) {
+            return $relativePath;
+        }
+
+        return $url;
     }
 }

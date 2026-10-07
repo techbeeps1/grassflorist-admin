@@ -56,7 +56,34 @@ class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::HEAD_START,
                 fn (): HtmlString => new HtmlString('<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">' . PHP_EOL)
             )
+            ->renderHook(
+                PanelsRenderHook::USER_MENU_BEFORE,
+                function (): HtmlString {
+                    $isAr = app()->getLocale() === 'ar';
+                    $targetLang = $isAr ? 'en' : 'ar';
+                    $targetLabel = $isAr ? 'English (LTR)' : 'عربي (RTL)';
+                    $title = $isAr ? 'Switch admin panel to English' : 'تحويل لوحة التحكم إلى العربية';
+                    $currentUrl = request()->fullUrlWithQuery(['lang' => $targetLang]);
+
+                    return new HtmlString('
+                        <div class="flex items-center px-2">
+                            <a href="' . e($currentUrl) . '" 
+                               title="' . e($title) . '"
+                               class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm">
+                                <svg class="w-4 h-4 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="m10.5 21 5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 0 1 6-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896 3.025 2.457 5.764 4.512 8.026" />
+                                </svg>
+                                <span>' . e($targetLabel) . '</span>
+                            </a>
+                        </div>
+                    ');
+                }
+            )
             ->userMenuItems([
+                MenuItem::make()
+                    ->label(fn () => app()->getLocale() === 'ar' ? 'Switch to English (LTR)' : 'التبديل إلى العربية (RTL)')
+                    ->url(fn (): string => request()->fullUrlWithQuery(['lang' => app()->getLocale() === 'ar' ? 'en' : 'ar']))
+                    ->icon('heroicon-o-language'),
                 MenuItem::make()
                     ->label('Store Profile')
                     ->url(fn (): string => VendorProfileResource::getUrl('index'))

@@ -18,6 +18,28 @@ class SetApiLocale
      */
     public function handle(Request $request, Closure $next): Response
     {
+        // 1. Admin Panel Requests: Controlled explicitly by admin session/query, defaulting to English
+        if ($request->is('admin*')) {
+            $queryLocale = $request->query('lang') ?? $request->query('locale');
+            if ($queryLocale && is_string($queryLocale)) {
+                $clean = strtolower(substr($queryLocale, 0, 2));
+                if (in_array($clean, $this->supportedLocales)) {
+                    session(['admin_locale' => $clean]);
+                }
+            }
+
+            $locale = session('admin_locale') ?? config('app.locale', 'en');
+            $locale = strtolower(substr((string) $locale, 0, 2));
+            if (! in_array($locale, $this->supportedLocales)) {
+                $locale = 'en';
+            }
+
+            app()->setLocale($locale);
+
+            return $next($request);
+        }
+
+        // 2. API / Storefront Requests
         $locale = $request->header('X-Locale')
             ?? $request->query('lang')
             ?? $request->query('locale')

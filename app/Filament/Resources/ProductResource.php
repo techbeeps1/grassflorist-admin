@@ -291,6 +291,7 @@ class ProductResource extends Resource
             ->columns([
                 Tables\Columns\ImageColumn::make('image')
                     ->label('Image')
+                    ->disk('public')
                     ->circular()
                     ->size(45),
 

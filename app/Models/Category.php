@@ -96,6 +96,14 @@ class Category extends Model
         return $this->belongsTo(User::class, 'updated_by');
     }
 
-    
-
+    // Helper: Full Public Category Image URL
+    public function getImageUrlAttribute(): ?string
+    {
+        if (empty($this->cat_image)) {
+            return null;
+        }
+        return str_starts_with($this->cat_image, 'http')
+            ? $this->cat_image
+            : asset('storage/' . $this->cat_image);
+    }
 }
