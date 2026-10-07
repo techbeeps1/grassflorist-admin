@@ -168,30 +168,8 @@ class CategoryResource extends Resource
                                     ->label('Is Visible on Store')
                                     ->default(true),
 
-                                Forms\Components\Placeholder::make('current_image_preview')
-                                    ->label('Current Image')
-                                    ->content(function (?Category $record) {
-                                        if (! $record?->cat_image) {
-                                            return new \Illuminate\Support\HtmlString('<span class="text-xs text-gray-500">No image assigned</span>');
-                                        }
-                                        $src = str_starts_with($record->cat_image, 'http')
-                                            ? $record->cat_image
-                                            : asset('storage/' . $record->cat_image);
-                                        $filename = basename(parse_url($src, PHP_URL_PATH));
-                                        return new \Illuminate\Support\HtmlString(
-                                            '<div style="overflow: hidden; max-width: 100%; width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px; background-color: #111827; border: 1px solid #374151; border-radius: 8px;">
-                                                <img src="' . e($src) . '" style="width: 50px; height: 50px; flex-shrink: 0; object-fit: cover; border-radius: 6px; border: 1px solid #4b5563;" alt="Category Image" />
-                                                <div style="min-width: 0; flex: 1 1 0%; overflow: hidden;">
-                                                    <span style="display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #e5e7eb; font-weight: 500;" title="' . e($filename) . '">' . e($filename) . '</span>
-                                                    <a href="' . e($src) . '" target="_blank" style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #10b981; margin-top: 4px; text-decoration: none;">Open Full Size ↗</a>
-                                                </div>
-                                            </div>'
-                                        );
-                                    })
-                                    ->visible(fn (?Category $record) => filled($record?->cat_image)),
-
                                 FileUpload::make('cat_image')
-                                    ->label(fn (?Category $record) => filled($record?->cat_image) ? 'Replace Image' : 'Upload Image')
+                                    ->label('Category Image')
                                     ->image()
                                     ->disk('public')
                                     ->directory('categories'),

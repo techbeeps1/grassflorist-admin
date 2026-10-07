@@ -54,7 +54,29 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->renderHook(
                 PanelsRenderHook::HEAD_START,
-                fn (): HtmlString => new HtmlString('<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">' . PHP_EOL)
+                fn (): HtmlString => new HtmlString('
+                    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+                    <style>
+                        /* FilePond Grid Gallery Layout */
+                        .filepond--root[data-style-panel-layout*="grid"] .filepond--item {
+                            width: calc(50% - 0.5em) !important;
+                        }
+                        @media (min-width: 640px) {
+                            .filepond--root[data-style-panel-layout*="grid"] .filepond--item {
+                                width: calc(33.333% - 0.5em) !important;
+                            }
+                        }
+                        @media (min-width: 1024px) {
+                            .filepond--root[data-style-panel-layout*="grid"] .filepond--item {
+                                width: calc(25% - 0.5em) !important;
+                            }
+                        }
+                        .filepond--root[data-style-panel-layout*="grid"] .filepond--image-preview-wrapper {
+                            border-radius: 8px;
+                            overflow: hidden;
+                        }
+                    </style>
+                ')
             )
             ->renderHook(
                 PanelsRenderHook::USER_MENU_BEFORE,

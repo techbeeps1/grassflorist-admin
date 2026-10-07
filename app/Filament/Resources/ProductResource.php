@@ -177,58 +177,24 @@ class ProductResource extends Resource
 
                         Forms\Components\Section::make('Product Media')
                             ->schema([
-                                Forms\Components\Placeholder::make('current_image_preview')
-                                    ->label('Current Featured Image')
-                                    ->content(function (?Product $record) {
-                                        if (! $record?->image) {
-                                            return new \Illuminate\Support\HtmlString('<span class="text-xs text-gray-500">No image assigned</span>');
-                                        }
-                                        $src = str_starts_with($record->image, 'http')
-                                            ? $record->image
-                                            : asset('storage/' . $record->image);
-                                        $filename = basename(parse_url($src, PHP_URL_PATH));
-                                        return new \Illuminate\Support\HtmlString(
-                                            '<div style="overflow: hidden; max-width: 100%; width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px; background-color: #111827; border: 1px solid #374151; border-radius: 8px;">
-                                                <img src="' . e($src) . '" style="width: 50px; height: 50px; flex-shrink: 0; object-fit: cover; border-radius: 6px; border: 1px solid #4b5563;" alt="Product Image" />
-                                                <div style="min-width: 0; flex: 1 1 0%; overflow: hidden;">
-                                                    <span style="display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #e5e7eb; font-weight: 500;" title="' . e($filename) . '">' . e($filename) . '</span>
-                                                    <a href="' . e($src) . '" target="_blank" style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #10b981; margin-top: 4px; text-decoration: none;">Open Full Size ↗</a>
-                                                </div>
-                                            </div>'
-                                        );
-                                    })
-                                    ->visible(fn (?Product $record) => filled($record?->image)),
-
                                 FileUpload::make('image')
-                                    ->label(fn (?Product $record) => filled($record?->image) ? 'Replace Featured Image' : 'Upload Featured Image')
+                                    ->label('Featured Image')
                                     ->image()
+                                    ->imagePreviewHeight('220')
+                                    ->openable()
                                     ->disk('public')
                                     ->directory('products'),
 
-                                Forms\Components\Placeholder::make('current_gallery_preview')
-                                    ->label('Current Gallery Images')
-                                    ->content(function (?Product $record) {
-                                        $gallery = $record?->gallery ?? [];
-                                        if (empty($gallery) || ! is_array($gallery)) {
-                                            return new \Illuminate\Support\HtmlString('<span class="text-xs text-gray-500">No gallery images</span>');
-                                        }
-                                        $html = '<div class="flex flex-wrap gap-2 p-2 bg-gray-900 rounded-lg border border-gray-700">';
-                                        foreach ($gallery as $img) {
-                                            $src = str_starts_with($img, 'http') ? $img : asset('storage/' . $img);
-                                            $html .= '<a href="' . e($src) . '" target="_blank"><img src="' . e($src) . '" class="w-16 h-16 object-cover rounded border border-gray-600 hover:scale-105 transition" /></a>';
-                                        }
-                                        $html .= '</div>';
-                                        return new \Illuminate\Support\HtmlString($html);
-                                    })
-                                    ->visible(fn (?Product $record) => ! empty($record?->gallery)),
-
                                 FileUpload::make('gallery')
-                                    ->label('Add / Replace Gallery Images')
+                                    ->label('Gallery Images')
                                     ->multiple()
                                     ->reorderable()
                                     ->image()
                                     ->disk('public')
-                                    ->directory('products/gallery'),
+                                    ->directory('products/gallery')
+                                    ->panelLayout('grid')
+                                    ->imagePreviewHeight('150')
+                                    ->openable(),
                             ]),
                     ])->columnSpan(2),
 
