@@ -40,12 +40,21 @@ class SetApiLocale
         }
 
         // 2. API / Storefront Requests
-        $locale = $request->header('X-Locale')
-            ?? $request->query('lang')
-            ?? $request->query('locale')
-            ?? session('locale')
-            ?? $this->detectAcceptLanguage($request)
-            ?? config('app.locale', 'en');
+        if (
+            $request->is('api/ar*') ||
+            $request->is('ar/*') ||
+            $request->segment(1) === 'ar' ||
+            $request->segment(2) === 'ar'
+        ) {
+            $locale = 'ar';
+        } else {
+            $locale = $request->header('X-Locale')
+                ?? $request->query('lang')
+                ?? $request->query('locale')
+                ?? session('locale')
+                ?? $this->detectAcceptLanguage($request)
+                ?? config('app.locale', 'en');
+        }
 
         $locale = strtolower(substr((string) $locale, 0, 2));
 

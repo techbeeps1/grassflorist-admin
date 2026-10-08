@@ -146,6 +146,10 @@ Route::get('/faqs', [FaqController::class, 'index']);
 
 // 🇸🇦 Arabic Endpoints (/api/ar/...)
 Route::prefix('ar')->group(function () {
+    Route::get('/category', [CategoryController::class, 'index']);
+    Route::get('/products', [ProductController::class, 'index']);
+    Route::get('/products/{slug}', [ProductController::class, 'show']);
+    Route::get('/category/{slug}', [ProductController::class, 'productsByCategorySlug']);
     Route::get('/testimonials', [TestimonialController::class, 'index']);
     Route::get('/testimonials/limit={limit}', [TestimonialController::class, 'index']);
     Route::get('/testimonials/{limit}', [TestimonialController::class, 'index'])->whereNumber('limit');
