@@ -41,25 +41,32 @@ class SetApiLocale
 
         // 2. API / Storefront Requests
         if (
+            $request->is('api/en*') ||
+            $request->is('en/*') ||
+            $request->segment(1) === 'en' ||
+            $request->segment(2) === 'en' ||
+            $request->query('lang') === 'en' ||
+            $request->header('X-Locale') === 'en'
+        ) {
+            $locale = 'en';
+        } elseif (
             $request->is('api/ar*') ||
             $request->is('ar/*') ||
             $request->segment(1) === 'ar' ||
-            $request->segment(2) === 'ar'
+            $request->segment(2) === 'ar' ||
+            $request->query('lang') === 'ar' ||
+            $request->header('X-Locale') === 'ar'
         ) {
             $locale = 'ar';
         } else {
-            $locale = $request->header('X-Locale')
-                ?? $request->query('lang')
-                ?? $request->query('locale')
-                ?? session('locale')
-                ?? $this->detectAcceptLanguage($request)
-                ?? config('app.locale', 'en');
+            // Default for all Grass Florist storefront requests is Arabic ('ar')
+            $locale = 'ar';
         }
 
         $locale = strtolower(substr((string) $locale, 0, 2));
 
         if (! in_array($locale, $this->supportedLocales)) {
-            $locale = config('app.fallback_locale', 'en');
+            $locale = 'ar';
         }
 
         app()->setLocale($locale);

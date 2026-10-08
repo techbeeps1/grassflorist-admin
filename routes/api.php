@@ -114,42 +114,61 @@ Route::post('/updateuser', [AuthController::class, 'updateuser']);
 });
 
 
-//All Page 
-Route::apiResource('blog', CmsPageController::class);
-//Pages By Slug
+//All CMS Pages
+Route::get('cms-pages', [CmsPageController::class, 'index']);
 Route::get('cms-pages/{slug}', [CmsPageController::class, 'showBySlug']);
 
-
-//All Post 
-Route::apiResource('blog', CmsPostController::class);
-//Post By Slug
+//All Blog Posts
+Route::get('blog', [CmsPostController::class, 'index']);
 Route::get('blog/{slug}', [CmsPostController::class, 'showBySlug']);
 
 //News
 Route::apiResource('news', NewsController::class);
 Route::get('news/{slug}', [NewsController::class, 'newsBySlug']);
 
-
-
 //Home Page
 Route::get('/home-page', [HomePageController::class, 'index']);
 Route::get('/contact-page', [ContactPageController::class, 'index']);
 Route::get('/global-settings', [GlobalSettingController::class, 'index']);
 
-// 💬 Testimonials (Default English)
+// 💬 Testimonials
 Route::get('/testimonials', [TestimonialController::class, 'index']);
 Route::get('/testimonials/limit={limit}', [TestimonialController::class, 'index']);
 Route::get('/testimonials/{limit}', [TestimonialController::class, 'index'])->whereNumber('limit');
 
-// ❓ FAQs (Default English)
+// ❓ FAQs
 Route::get('/faqs', [FaqController::class, 'index']);
 
-// 🇸🇦 Arabic Endpoints (/api/ar/...)
-Route::prefix('ar')->group(function () {
+// 🇬🇧 English Endpoints (/api/en/...)
+Route::prefix('en')->group(function () {
+    Route::get('/home-page', [HomePageController::class, 'index']);
     Route::get('/category', [CategoryController::class, 'index']);
     Route::get('/products', [ProductController::class, 'index']);
     Route::get('/products/{slug}', [ProductController::class, 'show']);
     Route::get('/category/{slug}', [ProductController::class, 'productsByCategorySlug']);
+    Route::get('/search', [ProductSearchController::class, 'search']);
+    Route::get('/cms-pages', [CmsPageController::class, 'index']);
+    Route::get('/cms-pages/{slug}', [CmsPageController::class, 'showBySlug']);
+    Route::get('/blog', [CmsPostController::class, 'index']);
+    Route::get('/blog/{slug}', [CmsPostController::class, 'showBySlug']);
+    Route::get('/testimonials', [TestimonialController::class, 'index']);
+    Route::get('/testimonials/limit={limit}', [TestimonialController::class, 'index']);
+    Route::get('/testimonials/{limit}', [TestimonialController::class, 'index'])->whereNumber('limit');
+    Route::get('/faqs', [FaqController::class, 'index']);
+});
+
+// 🇸🇦 Arabic Endpoints (/api/ar/...)
+Route::prefix('ar')->group(function () {
+    Route::get('/home-page', [HomePageController::class, 'index']);
+    Route::get('/category', [CategoryController::class, 'index']);
+    Route::get('/products', [ProductController::class, 'index']);
+    Route::get('/products/{slug}', [ProductController::class, 'show']);
+    Route::get('/category/{slug}', [ProductController::class, 'productsByCategorySlug']);
+    Route::get('/search', [ProductSearchController::class, 'search']);
+    Route::get('/cms-pages', [CmsPageController::class, 'index']);
+    Route::get('/cms-pages/{slug}', [CmsPageController::class, 'showBySlug']);
+    Route::get('/blog', [CmsPostController::class, 'index']);
+    Route::get('/blog/{slug}', [CmsPostController::class, 'showBySlug']);
     Route::get('/testimonials', [TestimonialController::class, 'index']);
     Route::get('/testimonials/limit={limit}', [TestimonialController::class, 'index']);
     Route::get('/testimonials/{limit}', [TestimonialController::class, 'index'])->whereNumber('limit');

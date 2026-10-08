@@ -16,7 +16,7 @@ class GlobalSettingController extends Controller
             'success' => true,
             'data' => [
                 'branding' => [
-                    'site_name' => $setting->site_name ?? 'Bookwindow',
+                    'site_name' => $setting->site_name ?: 'Grass Florist',
                     'site_tagline' => $setting->site_tagline,
                     'site_logo' => $setting->site_logo_url,
                     'site_logo_dark' => $setting->site_logo_dark_url,

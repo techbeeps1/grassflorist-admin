@@ -12,6 +12,16 @@ class CategoryController extends Controller
     protected function getLocale(Request $request): string
     {
         if (
+            $request->routeIs('*en*') ||
+            $request->segment(1) === 'en' ||
+            $request->segment(2) === 'en' ||
+            $request->query('lang') === 'en' ||
+            $request->header('X-Locale') === 'en'
+        ) {
+            return 'en';
+        }
+
+        if (
             $request->routeIs('*ar*') ||
             $request->segment(1) === 'ar' ||
             $request->segment(2) === 'ar' ||
@@ -21,14 +31,7 @@ class CategoryController extends Controller
             return 'ar';
         }
 
-        if ($request->has('lang')) {
-            $lang = strtolower(substr((string) $request->query('lang'), 0, 2));
-            if (in_array($lang, ['en', 'ar'])) {
-                return $lang;
-            }
-        }
-
-        return app()->getLocale() ?: 'en';
+        return app()->getLocale() ?: 'ar';
     }
 
     public function formatCategory(Category $category, string $locale = 'en'): array

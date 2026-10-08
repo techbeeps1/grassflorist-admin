@@ -11,10 +11,22 @@ use Illuminate\Http\Request;
 class ProductController extends Controller
 {
     /**
-     * Determine active request locale ('en' or 'ar').
+     * Determine active request locale ('ar' by default, or 'en' if /en/ prefix or query).
      */
     protected function getLocale(Request $request): string
     {
+        // 1. Explicit English check
+        if (
+            $request->routeIs('*en*') ||
+            $request->segment(1) === 'en' ||
+            $request->segment(2) === 'en' ||
+            $request->query('lang') === 'en' ||
+            $request->header('X-Locale') === 'en'
+        ) {
+            return 'en';
+        }
+
+        // 2. Explicit Arabic check
         if (
             $request->routeIs('*ar*') ||
             $request->segment(1) === 'ar' ||
@@ -25,28 +37,66 @@ class ProductController extends Controller
             return 'ar';
         }
 
-        if ($request->has('lang')) {
-            $lang = strtolower(substr((string) $request->query('lang'), 0, 2));
-            if (in_array($lang, ['en', 'ar'])) {
-                return $lang;
-            }
-        }
-
-        return app()->getLocale() ?: 'en';
+        // 3. Default for Grass Florist is Arabic ('ar')
+        return app()->getLocale() ?: 'ar';
     }
 
     /**
-     * Format a product instance to clean, localized storefront JSON (excluding bookstore columns).
+     * Format a compact product card for category listings, related_products, and bought_together.
+     * Contains only card essentials: id, name, slug, price, mrp, in_stock, is_visible, image, image_path, gallery.
      */
-    public function formatProduct(Product $product, string $locale = 'en'): array
+    public function formatCardProduct(Product $product, string $locale = 'ar'): array
+    {
+        $imagePath = $product->image;
+        $imageUrl = null;
+        if ($imagePath) {
+            $imageUrl = str_starts_with($imagePath, 'http') ? $imagePath : asset('storage/' . ltrim($imagePath, '/'));
+        }
+
+        $galleryUrls = [];
+        foreach ((array) ($product->gallery ?? []) as $g) {
+            if (empty($g)) continue;
+            $galleryUrls[] = str_starts_with($g, 'http') ? $g : asset('storage/' . ltrim($g, '/'));
+        }
+
+        $price = (float) $product->price;
+        $mrp = (float) ($product->mrp ?: $product->price);
+        $quantity = (int) $product->quantity;
+
+        $name = $product->getTranslation('name', $locale);
+        if (empty($name) && is_array($product->name)) {
+            $name = $product->name[$locale] ?? reset($product->name);
+        }
+        if (empty($name)) {
+            $name = $product->name;
+        }
+
+        $slug = ($locale === 'ar' && filled($product->slug_ar)) ? $product->slug_ar : $product->slug;
+
+        return [
+            'id' => $product->id,
+            'name' => $name,
+            'slug' => $slug,
+            'price' => $price,
+            'mrp' => $mrp,
+            'in_stock' => $quantity > 0,
+            'is_visible' => (bool) $product->is_visible,
+            'image' => $imageUrl ?: $imagePath,
+            'image_path' => $imagePath,
+            'gallery' => $galleryUrls,
+        ];
+    }
+
+    /**
+     * Format a product instance to clean, detailed storefront JSON (excluding bookstore columns).
+     */
+    public function formatProduct(Product $product, string $locale = 'ar'): array
     {
         $categoryIds = is_array($product->category_id)
             ? $product->category_id
             : (json_decode($product->category_id, true) ?: []);
 
-        $categories = ($product->relationLoaded('categories') && $product->categories->isNotEmpty())
-            ? $product->categories
-            : Category::whereIn('id', (array) $categoryIds)->get();
+        $categories = Category::whereIn('id', (array) $categoryIds)->get();
 
         $formattedCategories = $categories->map(function ($cat) use ($locale) {
             $catImg = $cat->cat_image;
@@ -56,7 +106,7 @@ class ProductController extends Controller
             }
             return [
                 'id' => $cat->id,
-                'name' => $cat->getTranslation('name', $locale) ?: $cat->name,
+                'name' => $cat->getTranslation('name', $locale) ?: (is_array($cat->name) ? ($cat->name[$locale] ?? reset($cat->name)) : $cat->name),
                 'slug' => ($locale === 'ar' && filled($cat->slug_ar)) ? $cat->slug_ar : $cat->slug,
                 'image' => $catImgUrl ?: $catImg,
             ];
@@ -142,46 +192,8 @@ class ProductController extends Controller
         $products = Product::visibleToCustomers()->get();
 
         return response()->json(
-            $products->map(fn ($p) => $this->formatProduct($p, $locale))->values()
+            $products->map(fn ($p) => $this->formatCardProduct($p, $locale))->values()
         );
-    }
-
-    /**
-     * Format a compact product card for related_products and bought_together.
-     */
-    public function formatRelatedProduct(Product $product, string $locale = 'en'): array
-    {
-        $imagePath = $product->image;
-        $imageUrl = null;
-        if ($imagePath) {
-            $imageUrl = str_starts_with($imagePath, 'http') ? $imagePath : asset('storage/' . ltrim($imagePath, '/'));
-        }
-
-        $price = (float) $product->price;
-        $mrp = (float) ($product->mrp ?: $product->price);
-        $quantity = (int) $product->quantity;
-
-        $name = $product->getTranslation('name', $locale);
-        if (empty($name) && is_array($product->name)) {
-            $name = $product->name[$locale] ?? reset($product->name);
-        }
-        if (empty($name)) {
-            $name = $product->name;
-        }
-
-        $slug = ($locale === 'ar' && filled($product->slug_ar)) ? $product->slug_ar : $product->slug;
-
-        return [
-            'id' => $product->id,
-            'name' => $name,
-            'slug' => $slug,
-            'price' => $price,
-            'mrp' => $mrp,
-            'in_stock' => $quantity > 0,
-            'is_visible' => (bool) $product->is_visible,
-            'image' => $imageUrl ?: $imagePath,
-            'image_path' => $imagePath,
-        ];
     }
 
     /**
@@ -192,7 +204,6 @@ class ProductController extends Controller
         $locale = $this->getLocale($request);
 
         $product = Product::visibleToCustomers()
-            ->with(['categories'])
             ->where(function ($q) use ($slug) {
                 $q->where('slug', $slug)
                   ->orWhere('slug_ar', $slug);
@@ -227,8 +238,8 @@ class ProductController extends Controller
 
         return response()->json([
             'product' => $this->formatProduct($product, $locale),
-            'related_products' => $relatedProducts->map(fn ($p) => $this->formatRelatedProduct($p, $locale))->values(),
-            'bought_together' => $bought->map(fn ($p) => $this->formatRelatedProduct($p, $locale))->values(),
+            'related_products' => $relatedProducts->map(fn ($p) => $this->formatCardProduct($p, $locale))->values(),
+            'bought_together' => $bought->map(fn ($p) => $this->formatCardProduct($p, $locale))->values(),
         ]);
     }
 
@@ -264,7 +275,7 @@ class ProductController extends Controller
             $subcategories = Category::whereIn('id', $categoryIds)->get()->map(function ($cat) use ($locale) {
                 return [
                     'id' => $cat->id,
-                    'name' => $cat->getTranslation('name', $locale) ?: $cat->name,
+                    'name' => $cat->getTranslation('name', $locale) ?: (is_array($cat->name) ? ($cat->name[$locale] ?? reset($cat->name)) : $cat->name),
                     'slug' => ($locale === 'ar' && filled($cat->slug_ar)) ? $cat->slug_ar : $cat->slug,
                 ];
             });
@@ -278,13 +289,13 @@ class ProductController extends Controller
             return response()->json([
                 'category' => [
                     'id' => $category->id,
-                    'name' => $category->getTranslation('name', $locale) ?: $category->name,
+                    'name' => $category->getTranslation('name', $locale) ?: (is_array($category->name) ? ($category->name[$locale] ?? reset($category->name)) : $category->name),
                     'slug' => ($locale === 'ar' && filled($category->slug_ar)) ? $category->slug_ar : $category->slug,
-                    'description' => $category->getTranslation('description', $locale) ?: $category->description,
+                    'description' => $category->getTranslation('description', $locale) ?: (is_array($category->description) ? ($category->description[$locale] ?? '') : $category->description),
                     'image' => $catImgUrl ?: $catImg,
                 ],
                 'sub_categories' => $subcategories,
-                'products' => $products->map(fn ($p) => $this->formatProduct($p, $locale))->values(),
+                'products' => $products->map(fn ($p) => $this->formatCardProduct($p, $locale))->values(),
                 'seo' => [
                     'meta_title' => $category->getTranslation('meta_tag_title', $locale) ?: $category->meta_tag_title,
                     'meta_description' => $category->getTranslation('meta_tag_description', $locale) ?: $category->meta_tag_description,

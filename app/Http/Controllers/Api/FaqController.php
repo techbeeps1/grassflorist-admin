@@ -17,17 +17,24 @@ class FaqController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        // 1. Determine Language (Default 'en', or 'ar' if /ar/ prefix or ?lang=ar)
-        $locale = 'en';
+        // 1. Determine Language (Default 'ar', or 'en' if /en/ prefix or ?lang=en)
+        $locale = 'ar';
         if (
+            $request->routeIs('*en*') ||
+            $request->segment(1) === 'en' ||
+            $request->segment(2) === 'en' ||
+            $request->query('lang') === 'en' ||
+            $request->header('X-Locale') === 'en'
+        ) {
+            $locale = 'en';
+        } elseif (
             $request->routeIs('*ar*') ||
             $request->segment(1) === 'ar' ||
             $request->segment(2) === 'ar' ||
-            $request->query('lang') === 'ar'
+            $request->query('lang') === 'ar' ||
+            $request->header('X-Locale') === 'ar'
         ) {
             $locale = 'ar';
-        } elseif ($request->has('lang')) {
-            $locale = $request->query('lang');
         }
 
         $category = $request->query('category');
