@@ -26,8 +26,11 @@ class ProductController extends Controller
     public function show($slug)
     {
         $product = Product::visibleToCustomers()
-            ->with(['production'])
-            ->where('slug', $slug)
+            ->with(['production', 'categories'])
+            ->where(function ($q) use ($slug) {
+                $q->where('slug', $slug)
+                  ->orWhere('slug_ar', $slug);
+            })
             ->firstOrFail();
 
         $relatedProducts = Product::visibleToCustomers()
@@ -39,7 +42,8 @@ class ProductController extends Controller
 
                 if (!empty($categoryIds)) {
                     foreach ($categoryIds as $category) {
-                        $query->orWhereJsonContains('category_id', (string) $category);
+                        $query->orWhereJsonContains('category_id', (int) $category)
+                              ->orWhereJsonContains('category_id', (string) $category);
                     }
                 }
             })

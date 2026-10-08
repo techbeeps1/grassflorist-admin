@@ -28,6 +28,8 @@ use App\Http\Controllers\Api\WishlistController;
 use App\Http\Controllers\Api\SitemapController;
 use App\Http\Controllers\Api\VendorRegistrationController;
 use App\Http\Controllers\Api\GlobalSettingController;
+use App\Http\Controllers\Api\TestimonialController;
+use App\Http\Controllers\Api\FaqController;
 
 //Basic API
 
@@ -134,6 +136,22 @@ Route::get('/home-page', [HomePageController::class, 'index']);
 Route::get('/contact-page', [ContactPageController::class, 'index']);
 Route::get('/global-settings', [GlobalSettingController::class, 'index']);
 
+// 💬 Testimonials (Default English)
+Route::get('/testimonials', [TestimonialController::class, 'index']);
+Route::get('/testimonials/limit={limit}', [TestimonialController::class, 'index']);
+Route::get('/testimonials/{limit}', [TestimonialController::class, 'index'])->whereNumber('limit');
+
+// ❓ FAQs (Default English)
+Route::get('/faqs', [FaqController::class, 'index']);
+
+// 🇸🇦 Arabic Endpoints (/api/ar/...)
+Route::prefix('ar')->group(function () {
+    Route::get('/testimonials', [TestimonialController::class, 'index']);
+    Route::get('/testimonials/limit={limit}', [TestimonialController::class, 'index']);
+    Route::get('/testimonials/{limit}', [TestimonialController::class, 'index'])->whereNumber('limit');
+    Route::get('/faqs', [FaqController::class, 'index']);
+});
+
 //Conatct Form
 Route::post('/contact-form', [ContactFormController::class, 'send']);
 
@@ -158,6 +176,8 @@ Route::post('/vendor-register', [VendorRegistrationController::class, 'register'
 Route::prefix('v1')->group(function () {
     Route::get('/payment-methods', [\App\Http\Controllers\Api\StorefrontPaymentController::class, 'getPaymentMethods']);
     Route::get('/delivery-slots', [\App\Http\Controllers\Api\StorefrontPaymentController::class, 'getDeliverySlots']);
+    Route::get('/testimonials', [\App\Http\Controllers\Api\TestimonialController::class, 'index']);
+    Route::get('/faqs', [\App\Http\Controllers\Api\FaqController::class, 'index']);
     Route::post('/payments/initiate', [\App\Http\Controllers\Api\StorefrontPaymentController::class, 'initiatePayment']);
     Route::post('/payments/verify', [\App\Http\Controllers\Api\StorefrontPaymentController::class, 'verifyPaymentStatus']);
 

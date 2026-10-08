@@ -92,6 +92,8 @@ class UserResource extends Resource
                             'sales_orders' => 'Sales Order By Payment',
                             'shipping_methods' => 'Shipping Methods',
                             'sales_top_selling' => 'Top Selling Products',
+                            'testimonials' => 'Testimonials (Stories from Clients)',
+                            'faqs' => 'FAQs (Frequently Asked Questions)',
                         ])
                         ->columns(2)
                         ->gridDirection('row')

@@ -322,14 +322,23 @@ class ProductResource extends Resource
                     ->modalDescription('Do you want to fetch and sync products directly from grassflorist.com?')
                     ->action(function (StoreImportService $importService) {
                         try {
+                            @set_time_limit(0);
+                            @ini_set('memory_limit', '1024M');
+                            \Illuminate\Support\Facades\DB::disableQueryLog();
+
                             $initial = $importService->importProductsChunk(1, 50);
-                            for ($p = 2; $p <= $initial['total_pages']; $p++) {
-                                $importService->importProductsChunk($p, 50);
+                            $totalPages = $initial['total_pages'];
+                            $totalImported = $initial['imported'];
+
+                            for ($p = 2; $p <= $totalPages; $p++) {
+                                $res = $importService->importProductsChunk($p, 50);
+                                $totalImported += $res['imported'];
+                                gc_collect_cycles();
                             }
 
                             Notification::make()
                                 ->title('Products Synced Successfully!')
-                                ->body("Synced {$initial['total_records']} products from grassflorist.com.")
+                                ->body("Synced {$totalImported} products from grassflorist.com.")
                                 ->success()
                                 ->send();
                         } catch (\Exception $e) {

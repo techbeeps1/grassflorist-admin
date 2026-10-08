@@ -98,7 +98,7 @@ class Product extends Model
     // Categories Relationship (Multiple categories)
     public function categories(): BelongsToMany
     {
-        return $this->belongsToMany(Category::class)->withTimestamps();
+        return $this->belongsToMany(Category::class);
     }
 
     // Order Items Relationship

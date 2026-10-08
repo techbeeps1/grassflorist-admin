@@ -25,3 +25,7 @@ yarn-error.log
 # Large archive files
 *.zip
 /scratch
+CODEBASE_OVERVIEW.md
+/.agents
+/sql
+*.sql

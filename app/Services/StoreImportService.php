@@ -676,8 +676,52 @@ class StoreImportService
         return $this->makeRequest('products', $params);
     }
 
+    /**
+     * Fetch specific products by IDs (e.g. Arabic translations of a batch) in one efficient request.
+     */
+    public function fetchProductsByIds(array $ids, string $lang = 'ar'): array
+    {
+        $ids = array_values(array_filter(array_unique(array_map('intval', $ids))));
+        if (empty($ids)) {
+            return [];
+        }
+
+        $map = [];
+        $chunks = array_chunk($ids, 100);
+
+        foreach ($chunks as $chunk) {
+            $params = [
+                'include' => implode(',', $chunk),
+                'per_page' => count($chunk),
+            ];
+            if ($lang) {
+                $params['lang'] = $lang;
+            }
+
+            try {
+                $res = $this->makeRequest('products', $params);
+                if ($res->successful()) {
+                    $items = $res->json() ?? [];
+                    foreach ($items as $item) {
+                        if (isset($item['id'])) {
+                            $map[(int) $item['id']] = $item;
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning("Failed to fetch products by IDs: " . $e->getMessage());
+            }
+        }
+
+        return $map;
+    }
+
     public function importProductsChunk(int $page = 1, int $perPage = 50): array
     {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '1024M');
+        DB::disableQueryLog();
+
         $responseEn = $this->fetchProducts($page, $perPage, 'en');
 
         if (! $responseEn->successful()) {
@@ -685,26 +729,40 @@ class StoreImportService
         }
 
         $itemsEn = $responseEn->json() ?? [];
-        $arById = $this->getArabicProductsMap();
-
         $totalPages = (int) $responseEn->header('X-WP-TotalPages', 1);
         $totalCount = (int) $responseEn->header('X-WP-Total', count($itemsEn));
+
+        // Collect Arabic translation IDs for this chunk
+        $arIds = [];
+        foreach ($itemsEn as $item) {
+            $arId = (int) ($item['translations']['ar'] ?? 0);
+            if ($arId > 0) {
+                $arIds[] = $arId;
+            }
+        }
+
+        // Fetch ONLY the Arabic products required for this chunk in one fast request
+        $arById = ! empty($arIds) ? $this->fetchProductsByIds($arIds, 'ar') : [];
+
         $imported = 0;
-        $processedArIds = [];
 
         foreach ($itemsEn as $enItem) {
             $sourceId = (int) ($enItem['id'] ?? 0);
             $arId = (int) ($enItem['translations']['ar'] ?? 0);
 
             $arItem = ($arId > 0 && isset($arById[$arId])) ? $arById[$arId] : null;
-            if ($arId > 0) {
-                $processedArIds[] = $arId;
-            }
 
             $rawEnName = trim(html_entity_decode((string) ($enItem['name'] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
             $rawArName = $arItem
                 ? trim(html_entity_decode((string) ($arItem['name'] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8'))
                 : $rawEnName;
+
+            // Ensure proper language alignment: if English name contains Arabic and Arabic name doesn't, swap them
+            if ($this->isArabic($rawEnName) && ! $this->isArabic($rawArName)) {
+                $tempName = $rawEnName;
+                $rawEnName = $rawArName;
+                $rawArName = $tempName;
+            }
 
             $rawEnSlug = (string) ($enItem['slug'] ?? '');
             $rawArSlug = $arItem ? (string) ($arItem['slug'] ?? '') : $rawEnSlug;
@@ -716,13 +774,26 @@ class StoreImportService
             $cleanShortEn = trim(html_entity_decode(strip_tags((string) ($enItem['short_description'] ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
             $cleanShortAr = $arItem ? trim(html_entity_decode(strip_tags((string) ($arItem['short_description'] ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8')) : $cleanShortEn;
 
+            $finalEnDesc = filled($rawEnDesc) ? $rawEnDesc : $cleanShortEn;
+            $finalArDesc = filled($rawArDesc) ? $rawArDesc : $cleanShortAr;
+
+            // Ensure English description is English and Arabic description is Arabic
+            if ($this->isArabic($finalEnDesc) && ! $this->isArabic($finalArDesc)) {
+                $tempDesc = $finalEnDesc;
+                $finalEnDesc = $finalArDesc;
+                $finalArDesc = $tempDesc;
+            }
+
+            if ($this->isArabic($cleanShortEn) && ! $this->isArabic($cleanShortAr)) {
+                $tempShort = $cleanShortEn;
+                $cleanShortEn = $cleanShortAr;
+                $cleanShortAr = $tempShort;
+            }
+
             $nameTranslations = [
                 'en' => $rawEnName,
                 'ar' => $rawArName,
             ];
-
-            $finalEnDesc = filled($rawEnDesc) ? $rawEnDesc : $cleanShortEn;
-            $finalArDesc = filled($rawArDesc) ? $rawArDesc : $cleanShortAr;
 
             $images = ! empty($enItem['images']) ? $enItem['images'] : ($arItem['images'] ?? []);
             $featuredImage = ! empty($images[0]['src']) ? $images[0]['src'] : null;
@@ -766,16 +837,38 @@ class StoreImportService
                     'ar' => $cleanShortAr,
                 ];
             }
+
+            // Featured Image: check disk first, download if missing, never save live URL
             if ($featuredImage) {
-                if (!empty($product->image) && !str_starts_with($product->image, 'http')) {
-                    // Preserve existing local storage image
+                if (!empty($product->image) && !str_starts_with($product->image, 'http') && Storage::disk('public')->exists($product->image)) {
+                    // Valid local image already present - preserve it
                 } else {
-                    $product->image = $this->resolveLocalImagePath($featuredImage, 'products');
+                    $resolvedImg = $this->resolveLocalImagePath($featuredImage, 'products', true);
+                    if ($resolvedImg) {
+                        $product->image = $resolvedImg;
+                    }
                 }
             }
+
+            // Gallery Images: check disk first, download if missing, never save live URL
             if (!empty($gallery)) {
-                $product->gallery = array_map(fn ($g) => $this->resolveLocalImagePath($g, 'products/gallery'), $gallery);
+                $existingGallery = (array) ($product->gallery ?? []);
+                $hasValidLocalGallery = !empty($existingGallery) && collect($existingGallery)->every(fn ($g) => is_string($g) && !str_starts_with($g, 'http') && Storage::disk('public')->exists($g));
+
+                if (!$hasValidLocalGallery) {
+                    $resolvedGallery = [];
+                    foreach ($gallery as $gUrl) {
+                        $resolvedG = $this->resolveLocalImagePath($gUrl, 'products/gallery', true);
+                        if ($resolvedG) {
+                            $resolvedGallery[] = $resolvedG;
+                        }
+                    }
+                    if (!empty($resolvedGallery)) {
+                        $product->gallery = array_values(array_unique($resolvedGallery));
+                    }
+                }
             }
+
             $product->is_visible = ($enItem['status'] ?? 'publish') === 'publish';
             $product->type = 'Other';
             $product->meta_data = [
@@ -791,7 +884,7 @@ class StoreImportService
 
             $product->save();
 
-            // Link categories (both en and ar category IDs)
+            // Link categories
             $wpCatIds = array_map(fn ($c) => (int) $c['id'], array_merge($enItem['categories'] ?? [], $arItem['categories'] ?? []));
             if (! empty($wpCatIds)) {
                 $localCatIds = Category::whereIn('source_id', $wpCatIds)->pluck('id')->toArray();
@@ -804,82 +897,8 @@ class StoreImportService
             $imported++;
         }
 
-        // Process standalone Arabic products not paired (only on the final page)
-        if ($page >= $totalPages) {
-            foreach ($arById as $arItem) {
-                $arSourceId = (int) ($arItem['id'] ?? 0);
-                if (in_array($arSourceId, $processedArIds)) {
-                    continue;
-                }
-
-            $rawArName = trim(html_entity_decode((string) ($arItem['name'] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
-            $rawArSlug = (string) ($arItem['slug'] ?? '');
-            $decodedArSlug = urldecode($rawArSlug);
-            $rawArDesc = trim((string) ($arItem['description'] ?? ''));
-            $rawArShortDesc = trim((string) ($arItem['short_description'] ?? ''));
-            $finalArDesc = filled($rawArDesc) ? $rawArDesc : $rawArShortDesc;
-
-            $images = $arItem['images'] ?? [];
-            $featuredImage = ! empty($images[0]['src']) ? $images[0]['src'] : null;
-            $gallery = array_values(array_filter(array_map(fn ($img) => $img['src'] ?? null, $images)));
-
-            $price = (float) ($arItem['price'] ?? 0);
-            $regularPrice = (float) ($arItem['regular_price'] ?? $price);
-            $sku = $arItem['sku'] ?: ('GF-WP-' . $arSourceId);
-            $qty = $arItem['manage_stock'] ? (int) ($arItem['stock_quantity'] ?? 0) : 100;
-
-            $product = Product::where('source_id', $arSourceId)
-                ->orWhere('sku', $sku)
-                ->first();
-
-            if (! $product) {
-                $product = new Product();
-                $product->source_id = $arSourceId;
-            }
-
-            $product->name = ['en' => $rawArName, 'ar' => $rawArName];
-            $product->slug = $this->getUniqueProductSlug($decodedArSlug ?: ('product-' . $arSourceId), $product->id);
-            $product->slug_ar = $decodedArSlug;
-            $product->sku = $sku;
-            $product->price = $price;
-            $product->mrp = $regularPrice;
-            $product->quantity = $qty;
-            if (filled($finalArDesc)) {
-                $product->description = ['en' => $finalArDesc, 'ar' => $finalArDesc];
-            }
-            if (filled($rawArShortDesc)) {
-                $product->sub_title = ['en' => $rawArShortDesc, 'ar' => $rawArShortDesc];
-            }
-            if ($featuredImage) {
-                $product->image = $featuredImage;
-            }
-            $product->gallery = $gallery;
-            $product->is_visible = ($arItem['status'] ?? 'publish') === 'publish';
-            $product->type = 'Other';
-            $product->meta_data = [
-                'type' => $arItem['type'] ?? 'simple',
-                'featured' => $arItem['featured'] ?? false,
-                'weight' => $arItem['weight'] ?? null,
-                'dimensions' => $arItem['dimensions'] ?? [],
-                'categories' => $arItem['categories'] ?? [],
-                'tags' => $arItem['tags'] ?? [],
-                'wp_ar_id' => $arSourceId,
-            ];
-
-            $product->save();
-
-            $wpCatIds = array_map(fn ($c) => (int) $c['id'], $arItem['categories'] ?? []);
-            if (! empty($wpCatIds)) {
-                $localCatIds = Category::whereIn('source_id', $wpCatIds)->pluck('id')->toArray();
-                if (! empty($localCatIds)) {
-                    $product->category_id = $localCatIds;
-                    $product->save();
-                }
-            }
-
-            $imported++;
-        }
-    }
+        // Clean up memory between chunks
+        gc_collect_cycles();
 
         return [
             'imported' => $imported,
@@ -1125,7 +1144,10 @@ class StoreImportService
             $post->content = ['en' => $rawEnContent, 'ar' => $rawArContent];
             $post->cms_category_id = $cmsCategoryId;
             if ($featuredImage) {
-                $post->image = $featuredImage;
+                $resolvedPostImg = $this->resolveLocalImagePath($featuredImage, 'cms/posts', true);
+                if ($resolvedPostImg) {
+                    $post->image = $resolvedPostImg;
+                }
             }
             $post->meta_title = ['en' => $metaTitleEn, 'ar' => $metaTitleAr];
             $post->meta_description = ['en' => $metaDescEn, 'ar' => $metaDescAr];
@@ -1180,7 +1202,10 @@ class StoreImportService
             $post->content = ['en' => $rawArContent, 'ar' => $rawArContent];
             $post->cms_category_id = $cmsCategoryId;
             if ($featuredImage) {
-                $post->image = $featuredImage;
+                $resolvedPostImg = $this->resolveLocalImagePath($featuredImage, 'cms/posts', true);
+                if ($resolvedPostImg) {
+                    $post->image = $resolvedPostImg;
+                }
             }
             $post->meta_title = ['en' => $metaTitleAr, 'ar' => $metaTitleAr];
             $post->meta_description = ['en' => $metaDescAr, 'ar' => $metaDescAr];
@@ -1199,40 +1224,201 @@ class StoreImportService
     }
 
     /**
-     * Convert an external image URL to a local public storage path if the image exists locally.
+     * Check if a string contains Arabic characters.
      */
-    public function resolveLocalImagePath(?string $url, string $directory): ?string
+    public function isArabic(?string $text): bool
+    {
+        if (empty($text)) {
+            return false;
+        }
+
+        return (bool) preg_match('/[\x{0600}-\x{06FF}\x{0750}-\x{077F}\x{08A0}-\x{08FF}]/u', $text);
+    }
+
+    /**
+     * Properly encode URL preserving scheme and host but encoding non-ascii path characters.
+     */
+    public function encodeUrl(string $url): string
+    {
+        $parts = parse_url($url);
+        if (! isset($parts['host'])) {
+            return $url;
+        }
+
+        $scheme = $parts['scheme'] ?? 'https';
+        $host = $parts['host'];
+        $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+        $path = $parts['path'] ?? '';
+        $query = isset($parts['query']) ? '?' . $parts['query'] : '';
+
+        // Encode each segment of path
+        $segments = explode('/', $path);
+        $encodedSegments = array_map(function ($segment) {
+            return rawurlencode(rawurldecode($segment));
+        }, $segments);
+        $encodedPath = implode('/', $encodedSegments);
+
+        return "{$scheme}://{$host}{$port}{$encodedPath}{$query}";
+    }
+
+    /**
+     * Download an external image to local public storage disk and return relative storage path.
+     */
+    public function downloadAndSaveImage(string $url, string $targetRelativePath): ?string
+    {
+        $disk = Storage::disk('public');
+        $fullDir = dirname(storage_path('app/public/' . $targetRelativePath));
+        if (! file_exists($fullDir)) {
+            @mkdir($fullDir, 0775, true);
+        }
+
+        $encodedUrl = $this->encodeUrl($url);
+
+        // Method 1: Laravel Http Client with browser headers
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout(12)
+                ->withHeaders([
+                    'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                    'Referer' => 'https://grassflorist.com/',
+                    'Origin' => 'https://grassflorist.com',
+                ])
+                ->get($encodedUrl);
+
+            if ($response->successful() && strlen($response->body()) > 50) {
+                $disk->put($targetRelativePath, $response->body());
+                return $targetRelativePath;
+            }
+        } catch (\Throwable $e) {
+            Log::warning("Http image download failed for [{$url}]: " . $e->getMessage());
+        }
+
+        // Method 2: cURL Fallback
+        if (function_exists('curl_init')) {
+            try {
+                $ch = curl_init();
+                curl_setopt_array($ch, [
+                    CURLOPT_URL => $encodedUrl,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_FOLLOWLOCATION => true,
+                    CURLOPT_TIMEOUT => 12,
+                    CURLOPT_SSL_VERIFYPEER => false,
+                    CURLOPT_SSL_VERIFYHOST => false,
+                    CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    CURLOPT_REFERER => 'https://grassflorist.com/',
+                ]);
+                $body = curl_exec($ch);
+                $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+
+                if ($code === 200 && is_string($body) && strlen($body) > 50) {
+                    $disk->put($targetRelativePath, $body);
+                    return $targetRelativePath;
+                }
+            } catch (\Throwable $e) {
+                Log::warning("cURL image download failed for [{$url}]: " . $e->getMessage());
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Convert an external image URL to a local public storage path.
+     * Searches existing disk files first. If not found, downloads it to local storage.
+     * NEVER returns a live URL (returns null on failure to prevent live URLs in DB).
+     */
+    public function resolveLocalImagePath(?string $url, string $directory = 'products', bool $downloadIfMissing = true): ?string
     {
         if (empty($url)) {
             return null;
         }
 
-        if (!str_starts_with($url, 'http://') && !str_starts_with($url, 'https://')) {
-            return $url;
+        $disk = Storage::disk('public');
+
+        // If already a local relative path, return clean relative path
+        if (! str_starts_with($url, 'http://') && ! str_starts_with($url, 'https://')) {
+            $cleaned = ltrim($url, '/');
+            if (str_starts_with($cleaned, 'storage/')) {
+                $cleaned = substr($cleaned, 8);
+            }
+            if ($disk->exists($cleaned)) {
+                return $cleaned;
+            }
+            return $cleaned;
         }
 
         $parsedPath = parse_url($url, PHP_URL_PATH);
-        if (!$parsedPath) {
-            return $url;
+        if (! $parsedPath) {
+            return null;
         }
 
-        $cleanFilename = urldecode(basename($parsedPath));
-        $info = pathinfo($cleanFilename);
-        $name = Str::slug($info['filename'] ?? 'file');
-        if (empty($name)) {
-            $name = 'media-' . substr(md5($url), 0, 10);
-        }
-        $ext = strtolower($info['extension'] ?? 'jpg');
+        $rawBase = basename($parsedPath);
+        $decodedBase = urldecode($rawBase);
+
+        $infoDecoded = pathinfo($decodedBase);
+        $infoRaw = pathinfo($rawBase);
+
+        $ext = strtolower($infoDecoded['extension'] ?? 'jpg');
         if (empty($ext) || strlen($ext) > 5) {
             $ext = 'jpg';
         }
 
-        $relativePath = "{$directory}/{$name}.{$ext}";
+        $targetSlug = Str::slug($infoDecoded['filename'] ?? 'file');
+        if (empty($targetSlug)) {
+            $targetSlug = 'media-' . substr(md5($url), 0, 10);
+        }
+        $targetRelativePath = "{$directory}/{$targetSlug}.{$ext}";
 
-        if (Storage::disk('public')->exists($relativePath)) {
-            return $relativePath;
+        // Alternate directory (e.g. products vs products/gallery)
+        $altDir = ($directory === 'products') ? 'products/gallery' : ($directory === 'products/gallery' ? 'products' : null);
+
+        // Build list of candidate relative paths to check on disk
+        $candidates = [
+            $targetRelativePath,
+            "{$directory}/" . Str::slug($infoRaw['filename']) . ".{$ext}",
+            "{$directory}/" . $decodedBase,
+            "{$directory}/" . $rawBase,
+        ];
+
+        if ($altDir) {
+            $candidates[] = "{$altDir}/{$targetSlug}.{$ext}";
+            $candidates[] = "{$altDir}/" . Str::slug($infoRaw['filename']) . ".{$ext}";
+            $candidates[] = "{$altDir}/" . $decodedBase;
+            $candidates[] = "{$altDir}/" . $rawBase;
         }
 
-        return $url;
+        // Dimension suffix variations (e.g., removing -600x600, -600x600-1)
+        $cleanedFilename = preg_replace('/-\d+x\d+(-\d+)?$/i', '', $infoDecoded['filename']);
+        if ($cleanedFilename !== $infoDecoded['filename']) {
+            $candSlug = Str::slug($cleanedFilename);
+            $candidates[] = "{$directory}/{$candSlug}.{$ext}";
+            $candidates[] = "{$directory}/{$candSlug}-600x600-1.{$ext}";
+            $candidates[] = "{$directory}/{$candSlug}-600x600.{$ext}";
+            $candidates[] = "{$directory}/{$cleanedFilename}.{$ext}";
+            if ($altDir) {
+                $candidates[] = "{$altDir}/{$candSlug}.{$ext}";
+                $candidates[] = "{$altDir}/{$candSlug}-600x600-1.{$ext}";
+                $candidates[] = "{$altDir}/{$candSlug}-600x600.{$ext}";
+            }
+        }
+
+        // 1. Check if file already exists locally
+        foreach (array_unique($candidates) as $cand) {
+            if ($disk->exists($cand)) {
+                return $cand;
+            }
+        }
+
+        // 2. If not found locally, download and save to public storage
+        if ($downloadIfMissing) {
+            $downloaded = $this->downloadAndSaveImage($url, $targetRelativePath);
+            if ($downloaded) {
+                return $downloaded;
+            }
+        }
+
+        // 3. NEVER return live URL to DB - return null on failure
+        return null;
     }
 }
