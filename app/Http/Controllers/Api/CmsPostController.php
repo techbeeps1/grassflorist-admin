@@ -48,22 +48,85 @@ class CmsPostController extends Controller
             $bannerUrl = str_starts_with($banner, 'http') ? $banner : asset('storage/' . ltrim($banner, '/'));
         }
 
+        $defaultImg = '/images/blog-placeholder.svg';
+        $coverImg = $imgUrl ?: ($bannerUrl ?: $defaultImg);
+
+        $catNameEn = 'Floral Guides';
+        $catNameAr = 'أدلة الزهور';
+        $catSlug = 'floral-guides';
+        if ($post->category) {
+            $catNameEn = format_translatable($post->category->name, 'en') ?: 'Floral Guides';
+            $catNameAr = format_translatable($post->category->name, 'ar') ?: 'أدلة الزهور';
+            $catSlug = $post->category->slug ?: 'floral-guides';
+        }
+
+        $titleEn = format_translatable($post->title, 'en') ?: $post->slug;
+        $titleAr = format_translatable($post->title, 'ar') ?: (format_translatable($post->title, 'en') ?: $post->slug);
+
+        $shortDescEn = format_translatable($post->short_description, 'en') ?: '';
+        $shortDescAr = format_translatable($post->short_description, 'ar') ?: '';
+
+        $contentEn = format_translatable($post->content, 'en') ?: '';
+        $contentAr = format_translatable($post->content, 'ar') ?: '';
+
+        $slugEn = $post->slug;
+        $slugAr = $post->slug_ar ?: $post->slug;
+
+        $authorName = $post->author ?: 'Grass Florist Atelier';
+
+        // Calculate read time roughly
+        $wordCount = str_word_count(strip_tags($contentEn ?: $contentAr));
+        $readMinutes = max(2, (int) ceil($wordCount / 160));
+
         return [
-            'id' => $post->id,
-            'title' => $post->getTranslation('title', $locale) ?: (is_array($post->title) ? ($post->title[$locale] ?? reset($post->title)) : $post->title),
-            'slug' => ($locale === 'ar' && filled($post->slug_ar)) ? $post->slug_ar : $post->slug,
-            'short_description' => $post->getTranslation('short_description', $locale) ?: (is_array($post->short_description) ? ($post->short_description[$locale] ?? '') : $post->short_description),
-            'content' => $post->getTranslation('content', $locale) ?: (is_array($post->content) ? ($post->content[$locale] ?? '') : $post->content),
-            'image' => $imgUrl ?: $img,
-            'banner_image' => $bannerUrl ?: $banner,
-            'author' => $post->author,
-            'published_at' => $post->published_at,
-            'views_count' => $post->views_count,
-            'seo' => [
-                'meta_title' => $post->getTranslation('meta_title', $locale) ?: $post->meta_title,
-                'meta_description' => $post->getTranslation('meta_description', $locale) ?: $post->meta_description,
-                'meta_keywords' => $post->getTranslation('meta_keywords', $locale) ?: $post->meta_keywords,
+            'id' => (string) $post->id,
+            'slug' => [
+                'en' => $slugEn,
+                'ar' => $slugAr,
             ],
+            'title' => [
+                'en' => $titleEn,
+                'ar' => $titleAr,
+            ],
+            'excerpt' => [
+                'en' => $shortDescEn,
+                'ar' => $shortDescAr,
+            ],
+            'content' => [
+                'en' => $contentEn,
+                'ar' => $contentAr,
+            ],
+            'coverImage' => $coverImg,
+            'image' => $coverImg,
+            'author' => [
+                'name' => [
+                    'en' => $authorName,
+                    'ar' => $authorName,
+                ],
+                'role' => [
+                    'en' => 'Master Floral Designer',
+                    'ar' => 'كبير مصممي الزهور',
+                ],
+                'avatar' => 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+            ],
+            'category' => [
+                'en' => $catNameEn,
+                'ar' => $catNameAr,
+            ],
+            'categorySlug' => $catSlug,
+            'publishedAt' => $post->published_at ? $post->published_at->toISOString() : ($post->created_at ? $post->created_at->toISOString() : now()->toISOString()),
+            'readTime' => $readMinutes,
+            'tags' => ['flowers', 'floral-care', 'luxury-gifting'],
+            'seoTitle' => [
+                'en' => format_translatable($post->meta_title, 'en') ?: "{$titleEn} | Grass Florist",
+                'ar' => format_translatable($post->meta_title, 'ar') ?: "{$titleAr} | غراس فلوريست",
+            ],
+            'seoDescription' => [
+                'en' => format_translatable($post->meta_description, 'en') ?: $shortDescEn,
+                'ar' => format_translatable($post->meta_description, 'ar') ?: $shortDescAr,
+            ],
+            'views_count' => (int) $post->views_count,
+            'short_description' => $locale === 'ar' ? $shortDescAr : $shortDescEn,
         ];
     }
 
@@ -71,6 +134,7 @@ class CmsPostController extends Controller
     {
         $locale = $this->getLocale($request);
         $posts = CmsPost::where('is_active', true)
+            ->with('category')
             ->orderBy('published_at', 'desc')
             ->get();
 
@@ -85,9 +149,19 @@ class CmsPostController extends Controller
     public function showBySlug(Request $request, string $slug): JsonResponse
     {
         $locale = $this->getLocale($request);
-        $post = CmsPost::where(function ($q) use ($slug) {
-            $q->where('slug', $slug)->orWhere('slug_ar', $slug);
-        })->where('is_active', true)->firstOrFail();
+        $post = CmsPost::where('is_active', true)
+            ->with('category')
+            ->where(function ($q) use ($slug) {
+                $q->where('slug', $slug)
+                  ->orWhere('slug_ar', $slug)
+                  ->orWhere('id', $slug);
+            })->first();
+
+        if (! $post) {
+            return response()->json(['message' => 'Post not found'], 404);
+        }
+
+        $post->increment('views_count');
 
         return response()->json($this->formatPost($post, $locale));
     }

@@ -17,6 +17,7 @@ class EmailTemplate extends Model
         'body_en',
         'body_ar',
         'recipient_type',
+        'notification_emails',
         'allowed_shortcodes',
         'is_active',
     ];

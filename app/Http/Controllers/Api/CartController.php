@@ -1,353 +1,567 @@
 <?php
+
 namespace App\Http\Controllers\Api;
 
-use App\Models\Product;
-use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Customer;
+use App\Models\Product;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class CartController extends Controller
 {
+    /**
+     * Resolve the authenticated customer ID from JWT Bearer token, guards, or request.
+     */
+    protected function resolveCustomerId(Request $request): ?int
+    {
+        // 1. Direct customer guard check
+        if (auth('customer')->check()) {
+            return (int) auth('customer')->id();
+        }
+
+        // 2. Try parsing JWT Bearer token if provided in header
+        $token = $request->bearerToken();
+        if ($token) {
+            try {
+                $customer = auth('customer')->setToken($token)->user();
+                if ($customer) {
+                    return (int) $customer->id;
+                }
+            } catch (\Exception $e) {
+                // Ignore token exceptions
+            }
+        }
+
+        // Customer ID must strictly come from authenticated customer guard, never web/admin session!
+        return null;
+    }
+
+    /**
+     * Resolve active cart instance for current request (by user_id if logged in, or session_id for guest).
+     */
+    protected function resolveCart(Request $request): ?Cart
+    {
+        $customerId = $this->resolveCustomerId($request);
+
+        if ($customerId) {
+            $userCart = Cart::where('user_id', $customerId)
+                ->where('status', 'active')
+                ->latest('updated_at')
+                ->first();
+
+            if ($userCart) {
+                return $userCart;
+            }
+        }
+
+        $sessionId = $request->session_id;
+        if ($sessionId) {
+            return Cart::where('session_id', $sessionId)
+                ->whereNull('user_id')
+                ->where('status', 'active')
+                ->latest('updated_at')
+                ->first();
+        }
+
+        return null;
+    }
+
+    /**
+     * Format cart and its products for JSON response.
+     */
+    protected function formatCartResponse(Cart $cart): array
+    {
+        $items = DB::table('cart_items')
+            ->join('products', 'cart_items.product_id', '=', 'products.id')
+            ->select(
+                'cart_items.id',
+                'cart_items.product_id',
+                'products.name as product_name',
+                'products.category_id as category_id',
+                'products.sub_category_id as sub_category_id',
+                'products.slug as product_slug',
+                'products.price as product_price',
+                'products.mrp as product_mrp',
+                'products.quantity as stock_quantity',
+                'products.is_visible as is_visible',
+                'cart_items.quantity',
+                DB::raw('COALESCE(cart_items.image, products.image) as image'),
+                'cart_items.product_weight',
+                DB::raw('(cart_items.quantity * products.price) as subtotal'),
+                'cart_items.created_at',
+                'cart_items.updated_at'
+            )
+            ->where('cart_items.cart_id', $cart->id)
+            ->get();
+
+        $items = $items->map(function ($item) {
+            if (is_string($item->product_name)) {
+                $trimmed = trim($item->product_name);
+                if (str_starts_with($trimmed, '{') || str_starts_with($trimmed, '[')) {
+                    $decoded = json_decode($trimmed, true);
+                    if (is_array($decoded)) {
+                        $item->product_name = $decoded;
+                    }
+                }
+            }
+            if (is_string($item->product_slug)) {
+                $trimmed = trim($item->product_slug);
+                if (str_starts_with($trimmed, '{') || str_starts_with($trimmed, '[')) {
+                    $decoded = json_decode($trimmed, true);
+                    if (is_array($decoded)) {
+                        $item->product_slug = $decoded;
+                    }
+                }
+            }
+
+            // Real-time In-Stock Validation
+            $availableStock = (int) ($item->stock_quantity ?? 0);
+            $isOutOfStock = ($availableStock <= 0) || !$item->is_visible;
+            $item->is_out_of_stock = $isOutOfStock;
+            $item->available_stock = max(0, $availableStock);
+
+            if (!$isOutOfStock && $item->quantity > $availableStock) {
+                $item->quantity = $availableStock;
+                $item->subtotal = (float) ($availableStock * (float) $item->product_price);
+                DB::table('cart_items')->where('id', $item->id)->update(['quantity' => $availableStock]);
+            }
+
+            return $item;
+        });
+
+        $total = (float) $items->sum('subtotal');
+        $itemsCount = (int) $items->sum('quantity');
+
+        return [
+            'cart_id' => $cart->id,
+            'session_id' => $cart->session_id,
+            'user_id' => $cart->user_id,
+            'items' => $items,
+            'items_count' => $itemsCount,
+            'total' => $total,
+            'created_at' => $cart->created_at,
+            'updated_at' => $cart->updated_at,
+        ];
+    }
+
+    /**
+     * Transfer/merge items from a guest cart into a user master cart without duplicates.
+     */
+    protected function mergeGuestIntoUserCart(Cart $guestCart, Cart $userCart): void
+    {
+        if ($guestCart->id === $userCart->id) {
+            return;
+        }
+
+        foreach ($guestCart->items as $guestItem) {
+            $product = Product::find($guestItem->product_id);
+            if (!$product) {
+                continue;
+            }
+
+            $availableStock = (int) ($product->quantity ?? 999);
+            $existing = $userCart->items()->where('product_id', $guestItem->product_id)->first();
+
+            if ($existing) {
+                // Add quantities up
+                $newQty = $existing->quantity + $guestItem->quantity;
+                if ($availableStock > 0 && $newQty > $availableStock) {
+                    $newQty = $availableStock;
+                }
+                $existing->update(['quantity' => $newQty]);
+            } else {
+                $qtyToAdd = ($availableStock > 0 && $guestItem->quantity > $availableStock)
+                    ? $availableStock
+                    : $guestItem->quantity;
+
+                $userCart->items()->create([
+                    'product_id' => $guestItem->product_id,
+                    'quantity' => $qtyToAdd,
+                    'price' => $guestItem->price ?: $product->price,
+                    'image' => $guestItem->image ?: $product->image,
+                    'product_weight' => $guestItem->product_weight ?: ($product->weight ?: '0'),
+                ]);
+            }
+        }
+
+        // Delete guest cart to avoid orphaned or duplicate records
+        $guestCart->items()->delete();
+        $guestCart->delete();
+    }
+
     public function index(Request $request)
     {
         $cart = session()->get('cart', []);
         return response()->json(['cart' => $cart]);
     }
 
-    public function add(Request $request)
+    /**
+     * Add product to cart (cross-device user master cart if logged in, otherwise guest session).
+     */
+    public function add(Request $request): JsonResponse
     {
-
-
         try {
-        $request->validate([
-            'product_id' => 'required|exists:products,id',
-            'quantity' => 'required|integer|min:1',
-        ]);
-        if (!$request->session()->isStarted()) {
-        $request->session()->start();
-        }
+            $request->validate([
+                'product_id' => 'required|exists:products,id',
+                'quantity' => 'required|integer|min:1',
+            ]);
 
-            $token = $request->session()->token();
+            $product = Product::visibleToCustomers()->findOrFail($request->product_id);
+            $availableStock = (int) ($product->quantity ?? 0);
 
-            $token = csrf_token();
-
-
-             $product = Product::visibleToCustomers()->findOrFail($request->product_id);
-
-             $availableStock = (int) ($product->quantity ?? 0);
-             if ($availableStock <= 0) {
-                 return response()->json([
-                     'success' => false,
-                     'message' => "Sorry, '{$product->name}' is currently out of stock."
-                 ], 422);
-             }
-
-             // Check if user is logged in via customer guard, api guard, default web guard, or request user_id
-             $customerId = auth('customer')->id() 
-                 ?? (auth('api')->id() 
-                 ?? (auth()->id() 
-                 ?? $request->user_id 
-                 ?? $request->customer_id));
-
-             if ($customerId) {
-                 $cart = Cart::firstOrCreate(
-                     ['user_id' => $customerId],
-                     ['session_id' => $request->session_id]
-                 );
-
-                 if ($request->session_id && $cart->session_id !== $request->session_id) {
-                     $cart->session_id = $request->session_id;
-                 }
-
-                 $customer = Customer::find($customerId);
-                 if ($customer) {
-                     $cart->customer_name = trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? ''));
-                     $cart->customer_email = $customer->email;
-                     $cart->customer_phone = $customer->phone;
-                 }
-
-                 $cart->status = 'active';
-                 $cart->ensureRecoveryToken();
-                 $cart->save();
-
-                 $this->updateOrCreateCartItem($cart, $product, $request->quantity);
-                 $this->updateSessionCart($product, $request->quantity);
-             } else {
-                 $cart = Cart::firstOrCreate(
-                     ['session_id' => $request->session_id],
-                     ['user_id' => null]
-                 );
-
-                 $cart->status = 'active';
-                 $cart->ensureRecoveryToken();
-                 $cart->save();
-
-                 $this->updateOrCreateCartItem($cart, $product, $request->quantity);
-                 $this->updateSessionCart($product, $request->quantity);
-             }
-
-             return response()->json([
-                 'message' => 'Product added to cart',
-                 'cart' => $cart->load('items.product'),
-                 'total_products_count' => $cart->items->sum('quantity'), 
-                 'session_id' => $request->session_id
-             ])->withHeaders([
-                 'Access-Control-Allow-Credentials' => 'true'
-             ]);
-
-        // $product = Product::find($request->product_id);
-        // $cart = session()->get('cart', []);
-
-        // if (isset($cart[$product->id])) {
-        //     $cart[$product->id]['quantity'] += $request->quantity;
-        // } else {
-        //     $cart[$product->id] = [
-        //         'id'=> $product->id,
-        //         'name' => $product->name,
-        //         'price' => $product->price,
-        //         'quantity' => $request->quantity,
-        //     ];
-        // }
-
-        // session()->put('cart', $cart);
-
-        // return response()->json(['message' => 'Product added to cart', 'cart' => $cart]);
+            if ($availableStock <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Sorry, '{$product->name}' is currently out of stock.",
+                ], 422);
             }
-             catch (\Exception $e) {
-            logger()->error('Registration error:', [
+
+            $customerId = $this->resolveCustomerId($request);
+
+            if ($customerId) {
+                $cart = Cart::where('user_id', $customerId)
+                    ->where('status', 'active')
+                    ->latest('updated_at')
+                    ->first();
+
+                if (!$cart) {
+                    $cart = Cart::create([
+                        'user_id' => $customerId,
+                        'session_id' => $request->session_id,
+                        'status' => 'active',
+                    ]);
+                } elseif ($request->session_id && $cart->session_id !== $request->session_id) {
+                    $cart->session_id = $request->session_id;
+                }
+
+                $customer = Customer::find($customerId);
+                if ($customer) {
+                    $cart->customer_name = trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? ''));
+                    $cart->customer_email = $customer->email;
+                    $cart->customer_phone = $customer->phone;
+                }
+
+                $cart->status = 'active';
+                $cart->ensureRecoveryToken();
+                $cart->save();
+
+                $this->updateOrCreateCartItem($cart, $product, $request->quantity);
+            } else {
+                if (!$request->session_id) {
+                    return response()->json(['error' => 'session_id is required for guest cart'], 422);
+                }
+
+                $cart = Cart::where('session_id', $request->session_id)
+                    ->whereNull('user_id')
+                    ->where('status', 'active')
+                    ->latest('updated_at')
+                    ->first();
+
+                if (!$cart) {
+                    $cart = Cart::create([
+                        'session_id' => $request->session_id,
+                        'user_id' => null,
+                        'status' => 'active',
+                    ]);
+                }
+
+                $cart->status = 'active';
+                $cart->ensureRecoveryToken();
+                $cart->save();
+
+                $this->updateOrCreateCartItem($cart, $product, $request->quantity);
+            }
+
+            return response()->json([
+                'message' => 'Product added to cart',
+                'cart' => $this->formatCartResponse($cart),
+                'total_products_count' => $cart->items()->sum('quantity'),
+                'session_id' => $cart->session_id,
+            ]);
+        } catch (\Exception $e) {
+            logger()->error('Cart add error:', [
                 'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
             ]);
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
 
-            protected function updateOrCreateCartItem($cart, $product, $quantity)
-            {
-                $cartItem = $cart->items()->where('product_id', $product->id)->first();
-                $availableStock = (int) ($product->quantity ?? 0);
+    protected function updateOrCreateCartItem(Cart $cart, Product $product, int $quantity): void
+    {
+        $cartItem = $cart->items()->where('product_id', $product->id)->first();
+        $availableStock = (int) ($product->quantity ?? 0);
 
-                if ($cartItem) {
-                    $newQty = $cartItem->quantity + $quantity;
-                    if ($availableStock > 0 && $newQty > $availableStock) {
-                        $newQty = $availableStock;
+        if ($cartItem) {
+            $newQty = $cartItem->quantity + $quantity;
+            if ($availableStock > 0 && $newQty > $availableStock) {
+                $newQty = $availableStock;
+            }
+            $cartItem->update(['quantity' => $newQty]);
+        } else {
+            $qtyToAdd = ($availableStock > 0 && $quantity > $availableStock) ? $availableStock : $quantity;
+            $cart->items()->create([
+                'product_id' => $product->id,
+                'quantity' => $qtyToAdd,
+                'price' => $product->price,
+                'image' => $product->image,
+                'product_weight' => $product->weight ?: '0',
+            ]);
+        }
+    }
+
+    /**
+     * View cart items (cross-device sync: logged-in user always gets their master cart).
+     */
+    public function viewcart(Request $request): JsonResponse
+    {
+        $customerId = $this->resolveCustomerId($request);
+        $cart = null;
+
+        if ($customerId) {
+            // Find customer's master active cart
+            $cart = Cart::where('user_id', $customerId)
+                ->where('status', 'active')
+                ->latest('updated_at')
+                ->first();
+
+            // Auto-merge if guest session exists on this device
+            if ($request->session_id) {
+                $guestCart = Cart::where('session_id', $request->session_id)
+                    ->whereNull('user_id')
+                    ->where('status', 'active')
+                    ->first();
+
+                if ($guestCart && $guestCart->items()->count() > 0) {
+                    if (!$cart) {
+                        $cart = Cart::create([
+                            'user_id' => $customerId,
+                            'session_id' => $request->session_id,
+                            'status' => 'active',
+                        ]);
                     }
-                    $cartItem->update([
-                        'quantity' => $newQty
-                    ]);
-                } else {
-                    $qtyToAdd = ($availableStock > 0 && $quantity > $availableStock) ? $availableStock : $quantity;
-                    $cart->items()->create([
-                        'product_id' => $product->id,
-                        'quantity' => $qtyToAdd,
-                        'price' => $product->price,
-                        'image' => $product->image,
-                        'product_weight' => $product->weight
-                    ]);
+                    $this->mergeGuestIntoUserCart($guestCart, $cart);
                 }
             }
-
-// Helper method to update session cart
-protected function updateSessionCart($product, $quantity)
-{
-    $cart = session()->get('cart', []);
-    
-    if (isset($cart[$product->id])) {
-        $cart[$product->id]['quantity'] += $quantity;
-    } else {
-        $cart[$product->id] = [
-            'id' => $product->id,
-            'name' => $product->name,
-            'price' => $product->price,
-            'quantity' => $quantity,
-            'image' => $product->image,
-            'product_weight' => $product->weight,
-
-        ];
-    }
-    
-    session()->put('cart', $cart);
-}
-
-// Helper method to get cart data for response
-protected function getCartData()
-{
-    if (auth()->check()) {
-        $cart = Cart::with('items.product')->where('user_id', auth()->id())->first();
-        return $cart ? $cart->toArray() : [];
-    } else {
-        return session('cart', []);
-    }
-}
-
-   
-
-    public function viewcart(Request $request)
-{
-    $sessionId = $request->session_id;
-    if($sessionId){
-     $cart = DB::table('carts')
-        ->select('carts.*')
-        ->where('carts.session_id', $sessionId)
-        ->first();
-
-    if (!$cart) {
-        return null; // or create a new cart
-    }
-
-    $items = DB::table('cart_items')
-        ->join('products', 'cart_items.product_id', '=', 'products.id')
-        ->select(
-            'cart_items.id',
-            'cart_items.product_id',
-            'products.name as product_name',
-            'products.category_id as category_id',
-            'products.sub_category_id as sub_category_id',
-            'products.slug as product_slug',
-            'products.price as product_price',
-            'products.mrp as product_mrp',
-            'products.quantity as stock_quantity',
-            'products.is_visible as is_visible',
-            'cart_items.quantity',
-            'cart_items.image',
-            'cart_items.product_weight',
-            DB::raw('(cart_items.quantity * products.price) as subtotal'),
-            'cart_items.created_at',
-            'cart_items.updated_at'
-        )
-        ->where('cart_items.cart_id', $cart->id)
-        ->get();
-
-    // Calculate totals
-    $total = $items->sum('subtotal');
-    $itemsCount = $items->sum('quantity');
-
-    return [
-        'cart_id' => $cart->id,
-        'session_id' => $cart->session_id,
-        'items' => $items,
-        'items_count' => $itemsCount,
-        'total' => $total,
-        'created_at' => $cart->created_at,
-        'updated_at' => $cart->updated_at
-    ];
-}
-else
-{
-    return response()->json([
-        'message' => 'Cart items not found'
-    ]);
-}
-    
-}
-
- public function remove(Request $request)
-    {
-$sessionId = $request->session_id;
-$productId = $request->product_id;
-    $cart = Cart::where('session_id', $sessionId)->first();
-
-if ($cart) {
-    // Delete the item
-    $deleted = $cart->items()->where('product_id', $productId)->delete();
-    
-    // Return appropriate response
-    return response()->json([
-        'success' => (bool)$deleted,
-        'message' => $deleted ? 'Item removed' : 'Item not found'
-    ]);
-}
-
-return response()->json(['success' => false, 'message' => 'Cart not found']);
-
-    }
-
-    public function empty(Request $request)
-    {
-        $sessionId = $request->session_id;
-        $cart = DB::table('carts')
-        ->where('session_id', $sessionId)
-        ->delete();
-        if (!$cart) {
-        return null; // or create a new cart
+        } else {
+            // Strictly guest cart: session_id must have user_id IS NULL
+            if ($request->session_id) {
+                $cart = Cart::where('session_id', $request->session_id)
+                    ->whereNull('user_id')
+                    ->where('status', 'active')
+                    ->latest('updated_at')
+                    ->first();
+            }
         }
-        return response()->json(['message' => 'Empty your Cart']);
+
+        if (!$cart) {
+            return response()->json([
+                'cart_id' => null,
+                'session_id' => $request->session_id,
+                'user_id' => $customerId,
+                'items' => [],
+                'items_count' => 0,
+                'total' => 0,
+            ]);
+        }
+
+        return response()->json($this->formatCartResponse($cart));
     }
 
-    public function cartupdate(Request $request)
+    /**
+     * Smart Cart Merge: Called upon login/registration.
+     * Merges current guest cart (and local items) into user's master account cart.
+     */
+    public function merge(Request $request): JsonResponse
     {
-            $sessionId = $request->session_id;
-            $productId = $request->product_id;
-            $quantityChange = $request->quantity_change; // Expected to be +1 or -1
+        try {
+            $customerId = $this->resolveCustomerId($request);
 
-            // Validate the quantity change
-            if (!in_array($quantityChange, [1, -1])) {
+            if (!$customerId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Invalid quantity change value'
+                    'message' => 'User must be authenticated to merge cart',
+                ], 401);
+            }
+
+            $customer = Customer::find($customerId);
+            $sessionId = $request->session_id;
+
+            // 1. Master User Cart
+            $userCart = Cart::where('user_id', $customerId)
+                ->where('status', 'active')
+                ->latest('updated_at')
+                ->first();
+
+            if (!$userCart) {
+                $userCart = Cart::create([
+                    'user_id' => $customerId,
+                    'session_id' => $sessionId,
+                    'status' => 'active',
                 ]);
             }
 
-            $cart = Cart::where('session_id', $sessionId)->first();
+            if ($customer) {
+                $userCart->customer_name = trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? ''));
+                $userCart->customer_email = $customer->email;
+                $userCart->customer_phone = $customer->phone;
+            }
+            $userCart->session_id = $sessionId ?: $userCart->session_id;
+            $userCart->status = 'active';
+            $userCart->save();
 
-            if ($cart) {
-                // Find the cart item
-                $cartItem = $cart->items()->where('product_id', $productId)->first();
-                
-                if ($cartItem) {
-                    // Calculate new quantity
-                    $newQuantity = $cartItem->quantity + $quantityChange;
-                    
-                    // Ensure quantity doesn't go below 1
-                    if ($newQuantity < 1) {
-                       $cart->items()->where('product_id', $productId)->delete();
-                       return response()->json([
-                           'success' => true,
-                           'message' => 'Item removed from cart',
-                           'new_quantity' => 0
-                       ]);
+            // 2. Transfer items from guest cart
+            if ($sessionId) {
+                $guestCart = Cart::where('session_id', $sessionId)
+                    ->whereNull('user_id')
+                    ->where('status', 'active')
+                    ->first();
+
+                if ($guestCart && $guestCart->id !== $userCart->id) {
+                    $this->mergeGuestIntoUserCart($guestCart, $userCart);
+                }
+            }
+
+            // 3. Merge local items passed in payload from frontend LocalStorage
+            $localItems = $request->input('local_items', []);
+            if (is_array($localItems) && count($localItems) > 0) {
+                foreach ($localItems as $local) {
+                    $pid = $local['productId'] ?? ($local['product_id'] ?? null);
+                    $qty = (int) ($local['quantity'] ?? 1);
+                    if (!$pid || $qty <= 0) {
+                        continue;
                     }
 
-                    // Check available stock
-                    $product = Product::find($productId);
-                    $availableStock = (int) ($product->quantity ?? 0);
-                    if ($product && $quantityChange > 0 && $newQuantity > $availableStock) {
-                        return response()->json([
-                            'success' => false,
-                            'message' => "Only {$availableStock} unit(s) available in stock"
-                        ], 422);
+                    $product = Product::find($pid);
+                    if (!$product) {
+                        continue;
                     }
-                    
-                    // Update the quantity
-                    $updated = $cartItem->update(['quantity' => $newQuantity]);
-                    
-                    // Return appropriate response
+
+                    $availableStock = (int) ($product->quantity ?? 999);
+                    $existing = $userCart->items()->where('product_id', $pid)->first();
+
+                    if ($existing) {
+                        $newQty = max($existing->quantity, $qty);
+                        if ($availableStock > 0 && $newQty > $availableStock) {
+                            $newQty = $availableStock;
+                        }
+                        $existing->update(['quantity' => $newQty]);
+                    } else {
+                        $qtyToAdd = ($availableStock > 0 && $qty > $availableStock) ? $availableStock : $qty;
+                        $userCart->items()->create([
+                            'product_id' => $pid,
+                            'quantity' => $qtyToAdd,
+                            'price' => $product->price,
+                            'image' => $product->image,
+                            'product_weight' => $product->weight ?: '0',
+                        ]);
+                    }
+                }
+            }
+
+            return response()->json($this->formatCartResponse($userCart));
+        } catch (\Exception $e) {
+            logger()->error('Cart merge error:', [
+                'message' => $e->getMessage(),
+            ]);
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function remove(Request $request): JsonResponse
+    {
+        $productId = $request->product_id;
+        $cart = $this->resolveCart($request);
+
+        if ($cart) {
+            $deleted = $cart->items()->where('product_id', $productId)->delete();
+            return response()->json([
+                'success' => (bool) $deleted,
+                'message' => $deleted ? 'Item removed' : 'Item not found in cart',
+            ]);
+        }
+
+        return response()->json(['success' => false, 'message' => 'Cart not found']);
+    }
+
+    public function empty(Request $request): JsonResponse
+    {
+        $cart = $this->resolveCart($request);
+
+        if ($cart) {
+            $cart->items()->delete();
+            return response()->json(['message' => 'Cart emptied successfully']);
+        }
+
+        return response()->json(['message' => 'Cart not found']);
+    }
+
+    public function cartupdate(Request $request): JsonResponse
+    {
+        $productId = $request->product_id;
+        $quantityChange = (int) $request->quantity_change;
+
+        if (!in_array($quantityChange, [1, -1])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid quantity change value',
+            ]);
+        }
+
+        $cart = $this->resolveCart($request);
+
+        if ($cart) {
+            $cartItem = $cart->items()->where('product_id', $productId)->first();
+
+            if ($cartItem) {
+                $newQuantity = $cartItem->quantity + $quantityChange;
+
+                if ($newQuantity < 1) {
+                    $cart->items()->where('product_id', $productId)->delete();
                     return response()->json([
-                        'success' => (bool)$updated,
-                        'message' => $updated ? 'Quantity updated' : 'Failed to update quantity',
-                        'new_quantity' => $newQuantity
+                        'success' => true,
+                        'message' => 'Item removed from cart',
+                        'new_quantity' => 0,
                     ]);
                 }
-                
+
+                $product = Product::find($productId);
+                $availableStock = (int) ($product->quantity ?? 0);
+                if ($product && $quantityChange > 0 && $newQuantity > $availableStock) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Only {$availableStock} unit(s) available in stock",
+                    ], 422);
+                }
+
+                $updated = $cartItem->update(['quantity' => $newQuantity]);
+
                 return response()->json([
-                    'success' => false,
-                    'message' => 'Item not found in cart'
+                    'success' => (bool) $updated,
+                    'message' => $updated ? 'Quantity updated' : 'Failed to update quantity',
+                    'new_quantity' => $newQuantity,
                 ]);
             }
 
             return response()->json([
                 'success' => false,
-                'message' => 'Cart not found'
+                'message' => 'Item not found in cart',
             ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Cart not found',
+        ]);
     }
 
     /**
-     * Auto-sync customer contact info during checkout (for guest and authenticated users)
+     * Auto-sync customer contact info during checkout (for guest and authenticated users).
      */
-    public function syncCustomer(Request $request)
+    public function syncCustomer(Request $request): JsonResponse
     {
         try {
             $request->validate([
@@ -359,7 +573,7 @@ return response()->json(['success' => false, 'message' => 'Cart not found']);
                 'phone' => 'nullable|string|max:25',
             ]);
 
-            $cart = Cart::where('session_id', $request->session_id)->first();
+            $cart = $this->resolveCart($request) ?: Cart::where('session_id', $request->session_id)->first();
             if (!$cart) {
                 return response()->json(['success' => false, 'message' => 'Cart not found'], 404);
             }
@@ -400,9 +614,9 @@ return response()->json(['success' => false, 'message' => 'Cart not found']);
     }
 
     /**
-     * Restore abandoned cart when customer visits recovery link
+     * Restore abandoned cart when customer visits recovery link.
      */
-    public function recover(Request $request)
+    public function recover(Request $request): JsonResponse
     {
         try {
             $request->validate([
@@ -422,12 +636,9 @@ return response()->json(['success' => false, 'message' => 'Cart not found']);
             }
 
             $targetSessionId = $request->session_id;
-
-            // If visitor is on a different session ID, point the cart to the visitor's current session
             $targetCart = Cart::where('session_id', $targetSessionId)->first();
 
             if ($targetCart && $targetCart->id !== $cart->id) {
-                // Merge items into current cart
                 foreach ($cart->items as $item) {
                     $existing = $targetCart->items()->where('product_id', $item->product_id)->first();
                     if ($existing) {
@@ -474,4 +685,3 @@ return response()->json(['success' => false, 'message' => 'Cart not found']);
         }
     }
 }
-

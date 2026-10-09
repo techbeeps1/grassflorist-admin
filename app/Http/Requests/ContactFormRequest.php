@@ -22,11 +22,14 @@ class ContactFormRequest extends FormRequest
     public function rules(): array
     {
         return [
-             'first_name' => 'required|string|max:255',
-            'last_name' => 'required|string|max:255',
+            'name' => 'nullable|string|max:255',
+            'first_name' => 'nullable|string|max:255',
+            'last_name' => 'nullable|string|max:255',
             'email' => 'required|email|max:255',
-            'subject' => 'required|string|max:255',
-            'emailMessage' => 'required|string',
+            'phone' => 'nullable|string|max:50',
+            'subject' => 'nullable|string|max:255',
+            'message' => 'nullable|string',
+            'emailMessage' => 'nullable|string',
         ];
     }
 }

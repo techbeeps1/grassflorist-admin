@@ -20,8 +20,10 @@ class ProductController extends Controller
             $request->routeIs('*en*') ||
             $request->segment(1) === 'en' ||
             $request->segment(2) === 'en' ||
+            $request->query('locale') === 'en' ||
             $request->query('lang') === 'en' ||
-            $request->header('X-Locale') === 'en'
+            $request->header('X-Locale') === 'en' ||
+            str_starts_with((string) $request->header('Accept-Language', ''), 'en')
         ) {
             return 'en';
         }
@@ -31,6 +33,7 @@ class ProductController extends Controller
             $request->routeIs('*ar*') ||
             $request->segment(1) === 'ar' ||
             $request->segment(2) === 'ar' ||
+            $request->query('locale') === 'ar' ||
             $request->query('lang') === 'ar' ||
             $request->header('X-Locale') === 'ar'
         ) {
@@ -73,6 +76,36 @@ class ProductController extends Controller
 
         $slug = ($locale === 'ar' && filled($product->slug_ar)) ? $product->slug_ar : $product->slug;
 
+        $categoryIds = is_array($product->category_id)
+            ? $product->category_id
+            : (json_decode($product->category_id, true) ?: []);
+
+        // Fast in-memory cache for all categories to prevent N+1 queries
+        static $categoriesCache = null;
+        if ($categoriesCache === null) {
+            $categoriesCache = Category::all()->keyBy('id');
+        }
+
+        $formattedCategories = [];
+        $categorySlugs = [];
+        foreach ((array) $categoryIds as $cid) {
+            $cidInt = (int) $cid;
+            if (isset($categoriesCache[$cidInt])) {
+                $c = $categoriesCache[$cidInt];
+                $cName = $c->getTranslation('name', $locale) ?: (is_array($c->name) ? ($c->name[$locale] ?? reset($c->name)) : $c->name);
+                $cSlug = ($locale === 'ar' && filled($c->slug_ar)) ? $c->slug_ar : $c->slug;
+                $formattedCategories[] = [
+                    'id' => $c->id,
+                    'name' => $cName,
+                    'slug' => $cSlug,
+                    'slug_en' => $c->slug,
+                    'slug_ar' => $c->slug_ar,
+                ];
+                if (!empty($c->slug)) $categorySlugs[] = $c->slug;
+                if (!empty($c->slug_ar)) $categorySlugs[] = $c->slug_ar;
+            }
+        }
+
         return [
             'id' => $product->id,
             'name' => $name,
@@ -84,6 +117,10 @@ class ProductController extends Controller
             'image' => $imageUrl ?: $imagePath,
             'image_path' => $imagePath,
             'gallery' => $galleryUrls,
+            'category_id' => $categoryIds,
+            'category_ids' => array_values(array_map('intval', (array) $categoryIds)),
+            'category_slugs' => array_values(array_unique($categorySlugs)),
+            'categories' => $formattedCategories,
         ];
     }
 
@@ -202,13 +239,22 @@ class ProductController extends Controller
     public function show(Request $request, $slug): JsonResponse
     {
         $locale = $this->getLocale($request);
+        $decodedSlug = urldecode($slug);
 
         $product = Product::visibleToCustomers()
-            ->where(function ($q) use ($slug) {
+            ->where(function ($q) use ($slug, $decodedSlug) {
                 $q->where('slug', $slug)
-                  ->orWhere('slug_ar', $slug);
+                  ->orWhere('slug_ar', $slug)
+                  ->orWhere('slug', $decodedSlug)
+                  ->orWhere('slug_ar', $decodedSlug)
+                  ->orWhere('sku', $slug)
+                  ->orWhere('id', $slug);
             })
-            ->firstOrFail();
+            ->first();
+
+        if (! $product) {
+            return response()->json(['error' => 'Product not found'], 404);
+        }
 
         $relatedProducts = Product::visibleToCustomers()
             ->where('id', '!=', $product->id)
@@ -250,35 +296,83 @@ class ProductController extends Controller
     {
         try {
             $locale = $this->getLocale($request);
+            $decodedSlug = urldecode($slug);
 
-            $category = Category::where('slug', $slug)->orWhere('slug_ar', $slug)->first();
+            $category = Category::where('slug', $slug)
+                ->orWhere('slug_ar', $slug)
+                ->orWhere('slug', $decodedSlug)
+                ->orWhere('slug_ar', $decodedSlug)
+                ->first();
+
+            // Alias fallback (e.g. occasions <-> ocassions)
+            if (! $category) {
+                if ($slug === 'occasions' || $decodedSlug === 'occasions') {
+                    $category = Category::where('slug', 'ocassions')->first();
+                } elseif ($slug === 'ocassions' || $decodedSlug === 'ocassions') {
+                    $category = Category::where('slug', 'occasions')->first();
+                }
+            }
+
             if (! $category) {
                 return response()->json([
                     'error' => 'Category not found',
                 ], 404);
             }
 
+            $catIds = [$category->id];
+            if ($category->child()->exists()) {
+                $catIds = array_merge($catIds, $category->child()->pluck('id')->toArray());
+            }
+
             $products = Product::visibleToCustomers()
-                ->where(function ($query) use ($category) {
-                    $query->whereJsonContains('category_id', (int) $category->id)
-                          ->orWhereJsonContains('category_id', (string) $category->id);
+                ->where(function ($query) use ($catIds) {
+                    foreach ($catIds as $cid) {
+                        $query->orWhereJsonContains('category_id', (int) $cid)
+                              ->orWhereJsonContains('category_id', (string) $cid);
+                    }
                 })
                 ->get();
 
-            $categoryIds = $products->flatMap(function ($product) {
-                $ids = is_array($product->category_id)
-                    ? $product->category_id
-                    : json_decode($product->category_id, true);
-                return $ids ?: [];
-            })->unique()->values()->toArray();
+            // Direct child subcategories of this category
+            $directChildren = $category->child()->where('is_visible', true)->get();
 
-            $subcategories = Category::whereIn('id', $categoryIds)->get()->map(function ($cat) use ($locale) {
+            // If this category itself is a subcategory (has parent), get siblings too
+            if ($directChildren->isEmpty() && $category->parent_id) {
+                $directChildren = Category::where('parent_id', $category->parent_id)
+                    ->where('is_visible', true)
+                    ->get();
+            }
+
+            // Fallback: If category has no child records, check product categoryIds
+            if ($directChildren->isEmpty()) {
+                $categoryIds = $products->flatMap(function ($product) {
+                    $ids = is_array($product->category_id)
+                        ? $product->category_id
+                        : json_decode($product->category_id, true);
+                    return $ids ?: [];
+                })->filter(fn ($id) => (int) $id !== (int) $category->id)->unique()->values()->toArray();
+
+                if (! empty($categoryIds)) {
+                    $directChildren = Category::whereIn('id', $categoryIds)->where('is_visible', true)->get();
+                }
+            }
+
+            $formattedSubcategories = $directChildren->map(function ($cat) use ($locale) {
+                $subImg = $cat->cat_image;
+                $subImgUrl = null;
+                if ($subImg) {
+                    $subImgUrl = str_starts_with($subImg, 'http') ? $subImg : asset('storage/' . ltrim($subImg, '/'));
+                }
                 return [
                     'id' => $cat->id,
                     'name' => $cat->getTranslation('name', $locale) ?: (is_array($cat->name) ? ($cat->name[$locale] ?? reset($cat->name)) : $cat->name),
                     'slug' => ($locale === 'ar' && filled($cat->slug_ar)) ? $cat->slug_ar : $cat->slug,
+                    'description' => $cat->getTranslation('description', $locale) ?: (is_array($cat->description) ? ($cat->description[$locale] ?? '') : $cat->description),
+                    'image' => $subImgUrl ?: $subImg,
+                    'image_path' => $subImg,
+                    'is_visible' => (bool) $cat->is_visible,
                 ];
-            });
+            })->values();
 
             $catImg = $category->cat_image;
             $catImgUrl = null;
@@ -293,8 +387,11 @@ class ProductController extends Controller
                     'slug' => ($locale === 'ar' && filled($category->slug_ar)) ? $category->slug_ar : $category->slug,
                     'description' => $category->getTranslation('description', $locale) ?: (is_array($category->description) ? ($category->description[$locale] ?? '') : $category->description),
                     'image' => $catImgUrl ?: $catImg,
+                    'child' => $formattedSubcategories,
+                    'subcategories' => $formattedSubcategories,
                 ],
-                'sub_categories' => $subcategories,
+                'sub_categories' => $formattedSubcategories,
+                'subcategories' => $formattedSubcategories,
                 'products' => $products->map(fn ($p) => $this->formatCardProduct($p, $locale))->values(),
                 'seo' => [
                     'meta_title' => $category->getTranslation('meta_tag_title', $locale) ?: $category->meta_tag_title,

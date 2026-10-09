@@ -148,18 +148,18 @@ class AbandonedCartResource extends Resource
                     }),
 
                 Tables\Columns\TextColumn::make('items_summary')
-                    ->label('Books in Cart')
+                    ->label('Items in Cart')
                     ->state(function (Cart $record): string {
                         $totalQty = $record->getItemsCount();
-                        $distinctTitles = $record->items->count();
-                        if ($totalQty === $distinctTitles) {
-                            return $totalQty === 1 ? '1 Book' : "{$totalQty} Books";
+                        $distinctItems = $record->items->count();
+                        if ($totalQty === $distinctItems) {
+                            return $totalQty === 1 ? '1 Item' : "{$totalQty} Items";
                         }
-                        return "{$totalQty} Books ({$distinctTitles} Titles)";
+                        return "{$totalQty} Items ({$distinctItems} Products)";
                     })
                     ->description(function (Cart $record): string {
                         $titles = $record->items->take(2)->map(function ($item) {
-                            $name = $item->product?->name ?? 'Book';
+                            $name = $item->product?->name ?? 'Product';
                             $qty = (int) $item->quantity;
                             $shortName = strlen($name) > 30 ? substr($name, 0, 27) . '...' : $name;
                             return $qty > 1 ? "{$shortName} (x{$qty})" : $shortName;
@@ -177,7 +177,7 @@ class AbandonedCartResource extends Resource
                 Tables\Columns\TextColumn::make('total_value')
                     ->label('Cart Total')
                     ->state(function (Cart $record): string {
-                        return '₹' . number_format($record->calculateTotal(), 2);
+                        return number_format($record->calculateTotal(), 2) . ' SAR';
                     })
                     ->sortable(query: function (Builder $query, string $direction): Builder {
                         return $query->withSum('items as total_price', 'price')

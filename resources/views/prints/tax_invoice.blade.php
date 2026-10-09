@@ -599,6 +599,13 @@
                 <td class="tot-ar">الاجمالي</td>
                 <td class="tot-val"><span class="sar-symbol">﷼</span>{{ $fmtTotal }}</td>
             </tr>
+            @if(strtoupper($order->currency ?? 'SAR') === 'USD' && $order->currency_amount)
+            <tr style="background: #f0fdf4; font-weight: 700;">
+                <td class="tot-en" style="color: #15803d;">Paid in USD</td>
+                <td class="tot-ar" style="color: #15803d;">المبلغ المدفوع بالدولار</td>
+                <td class="tot-val" style="color: #15803d; font-size: 13px;">${{ number_format((float)$order->currency_amount, 2) }} USD (Rate: 1 SAR = {{ number_format((float)($order->exchange_rate ?? 0.2667), 4) }} USD)</td>
+            </tr>
+            @endif
         </table>
 
     </div>

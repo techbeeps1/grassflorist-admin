@@ -50,6 +50,11 @@ class FaqController extends Controller
             });
         }
 
+        $limit = (int) $request->query('limit');
+        if ($limit > 0) {
+            $query->limit($limit);
+        }
+
         $faqs = $query->get();
 
         $data = $faqs->map(function (Faq $item) use ($locale) {
@@ -61,10 +66,15 @@ class FaqController extends Controller
             $arA = format_translatable($item->answer, 'ar');
 
             return [
-                'id' => $item->id,
+                'id' => (string) $item->id,
                 'category' => $locale === 'ar' ? ($arCat ?: $enCat) : ($enCat ?: $arCat),
                 'question' => $locale === 'ar' ? ($arQ ?: $enQ) : ($enQ ?: $arQ),
                 'answer' => $locale === 'ar' ? ($arA ?: $enA) : ($enA ?: $arA),
+                'translations' => [
+                    'category' => ['en' => $enCat, 'ar' => $arCat],
+                    'question' => ['en' => $enQ, 'ar' => $arQ],
+                    'answer' => ['en' => $enA, 'ar' => $arA],
+                ],
                 'sort_order' => (int) $item->sort_order,
             ];
         });

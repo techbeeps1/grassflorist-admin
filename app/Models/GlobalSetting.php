@@ -9,6 +9,16 @@ class GlobalSetting extends Model
 {
     protected $guarded = ['id'];
 
+    protected $casts = [
+        'topbar_enabled' => 'boolean',
+        'sitemap_enabled' => 'boolean',
+        'sitemap_include_products' => 'boolean',
+        'sitemap_include_categories' => 'boolean',
+        'sitemap_include_static_pages' => 'boolean',
+        'sitemap_include_blog' => 'boolean',
+        'llms_enabled' => 'boolean',
+    ];
+
     protected $appends = [
         'site_logo_url',
         'site_logo_dark_url',

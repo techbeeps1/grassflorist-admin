@@ -48,10 +48,29 @@ class EmailTemplateResource extends Resource
                                     ->default(true),
                             ]),
 
+                        Forms\Components\Grid::make(2)
+                            ->schema([
+                                Forms\Components\Select::make('recipient_type')
+                                    ->label('Recipient Target')
+                                    ->options([
+                                        'admin' => 'Admin Team Only',
+                                        'customer' => 'Customer Only',
+                                        'both' => 'Both (Customer & Admin Team)',
+                                    ])
+                                    ->default('both')
+                                    ->required(),
+
+                                Forms\Components\TextInput::make('notification_emails')
+                                    ->label('Admin Notification Recipient Email(s)')
+                                    ->placeholder('e.g. events@grassflorist.com, asif@techbeeps.com')
+                                    ->helperText('Kis kis email per bejna hai (comma-separated email addresses).')
+                                    ->columnSpan(1),
+                            ]),
+
                         Forms\Components\Placeholder::make('allowed_shortcodes_display')
                             ->label('Available Dynamic Shortcodes (Click & Copy)')
                             ->content(fn (?EmailTemplate $record) => $record?->allowed_shortcodes ?? '{customer_name}, {order_id}, {total_amount}, {payment_method}, {delivery_date}, {delivery_time}')
-                            ->helperText('These placeholders will be automatically replaced with live order values when emails are sent.'),
+                            ->helperText('These placeholders will be automatically replaced with live booking/order values when emails are sent.'),
                     ]),
 
                 Forms\Components\Tabs::make('Languages')
@@ -131,6 +150,12 @@ class EmailTemplateResource extends Resource
                     ->badge()
                     ->color('info'),
 
+                Tables\Columns\TextColumn::make('notification_emails')
+                    ->label('Notification Recipients')
+                    ->placeholder('System Default')
+                    ->limit(30)
+                    ->tooltip(fn (EmailTemplate $record) => $record->notification_emails),
+
                 Tables\Columns\TextColumn::make('updated_at')
                     ->label('Last Updated')
                     ->dateTime('d M Y, h:i A'),
@@ -158,6 +183,19 @@ class EmailTemplateResource extends Resource
                     ->action(function (EmailTemplate $record, array $data) {
                         try {
                             $sampleData = [
+                                // Event Booking placeholders
+                                'client_name' => 'Nouf Al-Husseini',
+                                'first_name' => 'Nouf',
+                                'last_name' => 'Al-Husseini',
+                                'phone' => '+966 55 123 4567',
+                                'email' => 'nouf@example.com',
+                                'event_type' => 'Hall Wedding',
+                                'event_date' => date('Y-m-d', strtotime('+30 days')),
+                                'location' => 'Jeddah - Hilton Ballroom',
+                                'guests' => '150-300',
+                                'message' => 'We want an ethereal white and sage botanical tablescape with overhead hanging wisteria.',
+                                'submission_date' => date('d M Y, h:i A'),
+                                // Order placeholders
                                 'customer_name' => 'Sara Al-Otaibi',
                                 'order_id' => '92766',
                                 'total_amount' => '250.00 SAR',

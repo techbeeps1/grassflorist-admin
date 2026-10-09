@@ -463,6 +463,21 @@ class OrderResource extends Resource
                                                     ->content(function ($record) {
                                                         return format_currency($record->total_amount ?? 0, 2);
                                                     }),
+
+                                                Placeholder::make('currency_breakdown')
+                                                    ->label('Payment Currency & Conversion')
+                                                    ->content(function ($record) {
+                                                        if (!$record) return 'SAR';
+                                                        $curr = strtoupper($record->currency ?: 'SAR');
+                                                        if ($curr === 'USD') {
+                                                            $usdAmount = $record->currency_amount ? number_format((float)$record->currency_amount, 2) : 'N/A';
+                                                            $sarAmount = $record->sar_amount ? number_format((float)$record->sar_amount, 2) : number_format((float)$record->total_amount, 2);
+                                                            $rate = $record->exchange_rate ? number_format((float)$record->exchange_rate, 4) : 'N/A';
+                                                            return "Paid in USD: \${$usdAmount} | Base: {$sarAmount} SAR (Rate: 1 SAR = {$rate} USD)";
+                                                        }
+                                                        return "Paid in SAR: " . format_currency($record->sar_amount ?: $record->total_amount, 2);
+                                                    })
+                                                    ->columnSpanFull(),
                                             ]),
                                     ]),
 
@@ -885,10 +900,23 @@ class OrderResource extends Resource
                     ->money()
                     ->sortable()
                     ->searchable()
+                    ->description(function ($record) {
+                        if (strtoupper($record->currency ?? 'SAR') === 'USD' && $record->currency_amount) {
+                            return '$' . number_format((float)$record->currency_amount, 2) . ' USD';
+                        }
+                        return null;
+                    })
                     ->visible(fn () => auth()->user()?->isAdmin() ?? false)
                     ->summarize([
                         Tables\Columns\Summarizers\Sum::make()->money(),
                     ]),
+
+                Tables\Columns\TextColumn::make('currency')
+                    ->label('Currency')
+                    ->badge()
+                    ->color(fn ($state) => strtoupper((string)($state ?: 'SAR')) === 'USD' ? 'success' : 'gray')
+                    ->formatStateUsing(fn ($state) => strtoupper((string)($state ?: 'SAR')))
+                    ->toggleable(isToggledHiddenByDefault: true),
                 
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Order Date')

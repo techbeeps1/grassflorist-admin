@@ -10,6 +10,20 @@ class ContactPage extends Model
     use HasTranslations;
 
     protected $fillable = [
+        'badge',
+        'page_title',
+        'page_subtitle',
+        'form_title',
+        'inquiries_title',
+        'phone',
+        'whatsapp',
+        'email',
+        'working_hours',
+        'ateliers_title',
+        'city',
+        'address',
+        'notification_email',
+        'email_subject',
         'con_title',
         'con_address',
         'con_phone',
@@ -23,6 +37,15 @@ class ContactPage extends Model
     ];
 
     protected array $translatable = [
+        'badge',
+        'page_title',
+        'page_subtitle',
+        'form_title',
+        'inquiries_title',
+        'working_hours',
+        'ateliers_title',
+        'city',
+        'address',
         'con_title',
         'con_address',
         'meta_tag_title',

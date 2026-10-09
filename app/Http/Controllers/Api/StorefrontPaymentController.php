@@ -28,18 +28,42 @@ class StorefrontPaymentController extends Controller
     }
 
     /**
-     * Get active delivery slots for a specific date (Friday vs Regular + Cutoffs).
+     * Get active delivery slots for a specific date (Friday vs Regular + Cutoffs + Blocked Holiday dates).
      */
     public function getDeliverySlots(Request $request): JsonResponse
     {
-        $date = $request->query('date', date('Y-m-d'));
+        $timezone = \App\Models\GlobalSetting::current()->timezone ?: 'Asia/Riyadh';
+        $nowInTimezone = \Carbon\Carbon::now($timezone);
+        $date = $request->query('date', $nowInTimezone->toDateString());
+
+        $blockedInfo = \App\Models\DeliveryBlockedDate::getBlockedInfoForDate($date);
         $slots = DeliverySlot::getSlotsForDate($date);
+        $upcomingBlockedDates = \App\Models\DeliveryBlockedDate::getUpcomingBlockedDates(60);
 
         return response()->json([
             'status' => 'success',
             'date' => $date,
-            'is_friday' => (bool)date('N', strtotime($date)) == 5,
+            'timezone' => $timezone,
+            'current_time' => $nowInTimezone->format('h:i A'),
+            'is_friday' => (bool)(date('N', strtotime($date)) == 5),
+            'is_blocked' => $blockedInfo !== null,
+            'blocked_info' => $blockedInfo,
+            'blocked_dates' => $upcomingBlockedDates,
             'slots' => $slots,
+        ]);
+    }
+
+    /**
+     * Get upcoming active blocked dates and holidays with multilingual notices.
+     */
+    public function getBlockedDeliveryDates(Request $request): JsonResponse
+    {
+        $days = (int) $request->query('days', 60);
+        $dates = \App\Models\DeliveryBlockedDate::getUpcomingBlockedDates($days);
+
+        return response()->json([
+            'status' => 'success',
+            'blocked_dates' => $dates,
         ]);
     }
 

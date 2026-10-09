@@ -56,6 +56,7 @@ class CmsPageController extends Controller
                 'meta_description' => $page->getTranslation('meta_description', $locale) ?: $page->meta_description,
                 'meta_keywords' => $page->getTranslation('meta_keywords', $locale) ?: $page->meta_keywords,
             ],
+            'updated_at' => $page->updated_at ? $page->updated_at->format('Y-m-d') : null,
         ];
     }
 
@@ -77,7 +78,23 @@ class CmsPageController extends Controller
         $locale = $this->getLocale($request);
         $page = CmsPage::where(function ($q) use ($slug) {
             $q->where('slug', $slug)->orWhere('slug_ar', $slug);
-        })->where('is_active', true)->firstOrFail();
+            if ($slug === 'shipping' || $slug === 'shipping-policy') {
+                $q->orWhereIn('slug', ['shipping', 'shipping-policy', 'cold-chain-shipping']);
+            }
+            if ($slug === 'terms-conditions' || $slug === 'terms-and-conditions' || $slug === 'terms') {
+                $q->orWhereIn('slug', ['terms-conditions', 'terms-and-conditions', 'terms']);
+            }
+            if ($slug === 'privacy-policy' || $slug === 'privacy') {
+                $q->orWhere('slug', 'like', '%privacy%');
+            }
+            if ($slug === 'return-policy' || $slug === 'returns') {
+                $q->orWhereIn('slug', ['return-policy', 'returns']);
+            }
+        })->where('is_active', true)->first();
+
+        if (!$page) {
+            return response()->json(['message' => 'Page not found'], 404);
+        }
 
         return response()->json($this->formatPage($page, $locale));
     }

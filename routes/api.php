@@ -40,6 +40,7 @@ Route::get('/category/{slug}', [ProductController::class, 'productsByCategorySlu
 Route::get('/publications', [PublicationController::class, 'index']);
 Route::get('/publication/{slug}', [PublicationController::class, 'productsBySlug']);
 Route::get('/search', [ProductSearchController::class, 'search']);
+Route::get('/navigation', [MenuController::class, 'getNavigation']);
 Route::get('menus/{menuName}', [MenuController::class, 'getMenuItems']);
 
 
@@ -56,6 +57,7 @@ Route::prefix('cart')->group(function () {
 Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->get('/viewcart', [CartController::class, 'viewcart']);
 Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->get('/empty', [CartController::class, 'empty']);
 Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->post('add', [CartController::class, 'add']);
+Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->post('merge', [CartController::class, 'merge']);
 Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->post('cartupdate', [CartController::class, 'cartupdate']);
 Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->post('remove', [CartController::class, 'remove']);
 Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->post('clear', [CartController::class, 'clear']);
@@ -130,6 +132,8 @@ Route::get('news/{slug}', [NewsController::class, 'newsBySlug']);
 Route::get('/home-page', [HomePageController::class, 'index']);
 Route::get('/contact-page', [ContactPageController::class, 'index']);
 Route::get('/global-settings', [GlobalSettingController::class, 'index']);
+Route::post('/global-settings/fetch-currency-rate', [GlobalSettingController::class, 'fetchCurrencyRate']);
+Route::get('/currency-rates', [GlobalSettingController::class, 'fetchCurrencyRate']);
 
 // 💬 Testimonials
 Route::get('/testimonials', [TestimonialController::class, 'index']);
@@ -155,6 +159,7 @@ Route::prefix('en')->group(function () {
     Route::get('/testimonials/limit={limit}', [TestimonialController::class, 'index']);
     Route::get('/testimonials/{limit}', [TestimonialController::class, 'index'])->whereNumber('limit');
     Route::get('/faqs', [FaqController::class, 'index']);
+    Route::get('/contact-page', [ContactPageController::class, 'index']);
 });
 
 // 🇸🇦 Arabic Endpoints (/api/ar/...)
@@ -173,10 +178,13 @@ Route::prefix('ar')->group(function () {
     Route::get('/testimonials/limit={limit}', [TestimonialController::class, 'index']);
     Route::get('/testimonials/{limit}', [TestimonialController::class, 'index'])->whereNumber('limit');
     Route::get('/faqs', [FaqController::class, 'index']);
+    Route::get('/contact-page', [ContactPageController::class, 'index']);
 });
 
 //Conatct Form
 Route::post('/contact-form', [ContactFormController::class, 'send']);
+Route::post('/event-booking', [\App\Http\Controllers\Api\EventBookingController::class, 'store']);
+Route::post('/partner-with-us', [\App\Http\Controllers\Api\PartnerWithUsController::class, 'store']);
 
 Route::post('/tutor-form', [ContactFormController::class, 'submitTutorForm']);
 Route::post('/vendor-form', [ContactFormController::class, 'submitVendorForm']);
@@ -191,6 +199,7 @@ Route::get('/state-of-india', [StateController::class, 'index']);
 
 Route::post('/newsletter', [NewsletterController::class, 'subscribe']);
 
+Route::get('/google-reviews', [\App\Http\Controllers\Api\GoogleReviewController::class, 'index']);
 Route::get('/sitemap-data', [SitemapController::class, 'index']);
 
 Route::post('/vendor-register', [VendorRegistrationController::class, 'register']);
@@ -199,10 +208,19 @@ Route::post('/vendor-register', [VendorRegistrationController::class, 'register'
 Route::prefix('v1')->group(function () {
     Route::get('/payment-methods', [\App\Http\Controllers\Api\StorefrontPaymentController::class, 'getPaymentMethods']);
     Route::get('/delivery-slots', [\App\Http\Controllers\Api\StorefrontPaymentController::class, 'getDeliverySlots']);
+    Route::get('/delivery-slots/blocked-dates', [\App\Http\Controllers\Api\StorefrontPaymentController::class, 'getBlockedDeliveryDates']);
     Route::get('/testimonials', [\App\Http\Controllers\Api\TestimonialController::class, 'index']);
+    Route::get('/google-reviews', [\App\Http\Controllers\Api\GoogleReviewController::class, 'index']);
     Route::get('/faqs', [\App\Http\Controllers\Api\FaqController::class, 'index']);
     Route::post('/payments/initiate', [\App\Http\Controllers\Api\StorefrontPaymentController::class, 'initiatePayment']);
     Route::post('/payments/verify', [\App\Http\Controllers\Api\StorefrontPaymentController::class, 'verifyPaymentStatus']);
+
+    // Cart APIs under v1
+    Route::get('/cart/viewcart', [\App\Http\Controllers\Api\CartController::class, 'viewcart']);
+    Route::post('/cart/merge', [\App\Http\Controllers\Api\CartController::class, 'merge']);
+    Route::post('/cart/add', [\App\Http\Controllers\Api\CartController::class, 'add']);
+    Route::post('/cart/cartupdate', [\App\Http\Controllers\Api\CartController::class, 'cartupdate']);
+    Route::post('/cart/remove', [\App\Http\Controllers\Api\CartController::class, 'remove']);
 
     // Server-to-Server Webhook Endpoints
     Route::prefix('webhooks')->group(function () {

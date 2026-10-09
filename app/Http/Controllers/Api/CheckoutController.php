@@ -40,41 +40,23 @@ class CheckoutController extends Controller
         ], ['id'], ['payload', 'last_activity']);
 
         $request->validate([
-            'session_id' => 'required_if:is_guest,true|string|nullable',
+            'session_id' => 'sometimes|string|nullable',
             'first_name' => 'required|string',
-            'last_name' => 'required|string',
-            'phone' => ['required', 'string', 'regex:/^(\+91[\-\s]?)?[0]?[6-9]\d{9}$/'],
-            'shipping_method' => 'required|string',
+            'last_name' => 'nullable|string',
+            'phone' => 'required|string',
+            'shipping_method' => 'sometimes|string|nullable',
             'address' => 'required|string',
             'address_2' => 'string|nullable',
             'city' => 'nullable|string|max:100',
             'district' => 'nullable|string|max:100',
             'state' => 'nullable|string|max:100',
-            'zip_code' => ['required', 'regex:/^\d{6}$/'],
+            'zip_code' => 'nullable|string',
             'coupon_code' => 'nullable|string',
-            'email' => 'required_if:is_guest,true|email|nullable',
+            'email' => 'nullable|email',
             'is_guest' => 'sometimes|boolean',
-        ], [
-            'phone.required' => 'Mobile number is required.',
-            'phone.regex' => 'Please enter a valid 10-digit mobile number.',
-            'zip_code.required' => 'PIN code is required.',
-            'zip_code.regex' => 'Please enter a valid 6-digit PIN code.',
         ]);
 
-        $cleanPhone = preg_replace('/\D/', '', (string)$request->phone);
-        if (str_starts_with($cleanPhone, '91') && strlen($cleanPhone) > 10) {
-            $cleanPhone = substr($cleanPhone, 2);
-        } elseif (str_starts_with($cleanPhone, '0') && strlen($cleanPhone) > 10) {
-            $cleanPhone = substr($cleanPhone, 1);
-        }
-
-        if (strlen($cleanPhone) !== 10 || !preg_match('/^[6-9]\d{9}$/', $cleanPhone)) {
-            return response()->json([
-                'message' => 'Please provide a valid 10-digit mobile number.'
-            ], 422);
-        }
-
-        $dbPhone = '+91' . $cleanPhone;
+        $dbPhone = (string) $request->phone;
 
         // Get cart based on user or provided session ID
         $cart = $this->getCart($request);
@@ -263,31 +245,73 @@ class CheckoutController extends Controller
             {
             $totalAmount = $totalAmount + $request->delivery_amount; 
 
+            $senderName = $request->sender_name ?: trim(($request->first_name ?? '') . ' ' . ($request->last_name ?? ''));
+            $recipientName = $request->recipient_name ?: trim(($request->recipient_first_name ?? '') . ' ' . ($request->recipient_last_name ?? '')) ?: $senderName;
+            $recipientPhone = $request->recipient_phone ?: $dbPhone;
+            $locationLink = $request->shipping_address_link ?: $request->location_link;
+            $deliveryDate = $request->delivery_date;
+            $deliveryTime = $request->delivery_time ?: $request->delivery_slot;
+            $deliveryMessage = $request->card_message ?: $request->delivery_message;
+            $songLink = $request->song_link;
+
+            $vatRate = (float)(\App\Models\GlobalSetting::current()->vat_percentage ?? 15.00);
+            $taxAmount = round(max(0, $subtotal - $discountAmount) * ($vatRate / 100), 2);
+
+            $currency = strtoupper($request->currency ?: 'SAR');
+            $globalSetting = \App\Models\GlobalSetting::current();
+            $exchangeRate = $currency === 'USD' ? (float)($request->exchange_rate ?: $globalSetting->sar_to_usd_rate ?: 0.2667) : 1.0;
+            $sarAmount = $totalAmount;
+            $currencyAmount = $currency === 'USD' ? round($totalAmount * $exchangeRate, 2) : $totalAmount;
+
+            $metaData = is_array($request->meta_data) ? $request->meta_data : [];
+            $metaData['currency'] = $currency;
+            $metaData['exchange_rate'] = $exchangeRate;
+            $metaData['sar_total'] = $sarAmount;
+            $metaData['currency_total'] = $currencyAmount;
+            $metaData['sar_subtotal'] = $subtotal;
+            if ($currency === 'USD') {
+                $metaData['usd_total'] = $currencyAmount;
+                $metaData['usd_subtotal'] = round($subtotal * $exchangeRate, 2);
+            }
+
             $order = Order::create([
-                
                 'session_id' => $request->session_id,
-                'email' => $request->email,
-                'user_id' => $user ? $user->id : null,
+                'email' => $request->email ?: 'customer@grassflorist.com',
+                'user_id' => $user ? $user->id : (auth('customer')->id() ?? null),
                 'subtotal' => $subtotal,
                 'shipping_amount' => $shippingAmount,
                 'discount_amount' => $discountAmount,
+                'tax_amount' => $taxAmount,
                 'total_amount' => $totalAmount,
-                'payment_method' => $request->payment_method,
+                'currency' => $currency,
+                'exchange_rate' => $exchangeRate,
+                'currency_amount' => $currencyAmount,
+                'sar_amount' => $sarAmount,
+                'meta_data' => $metaData,
+                'payment_method' => $request->payment_method ?: 'mada',
                 'payment_status' => 'pending',
-                'address_2' => $request->address2,
-                'shipping_method' => $shippingMethod->name,
                 'address' => $request->address,
+                'address_2' => $request->address_2 ?: $request->address2,
+                'shipping_method' => $shippingMethod->name ?? 'Flat Rate',
                 'coupon_code' => $request->coupon_code,
                 'status' => 'pending',
-                'customer_phone'=> $dbPhone,
-                'first_name'=> $request->first_name,
-                'last_name'=> $request->last_name,
-                'zip_code' => $request->zip_code,
-                'city' => $request->city,
+                'customer_phone' => $dbPhone,
+                'first_name' => $request->first_name,
+                'last_name' => $request->last_name,
+                'sender_name' => $senderName,
+                'recipient_name' => $recipientName,
+                'recipient_phone' => $recipientPhone,
+                'location_link' => $locationLink,
+                'delivery_date' => $deliveryDate,
+                'delivery_time' => $deliveryTime,
+                'delivery_message' => $deliveryMessage,
+                'song_link' => $songLink,
+                'zip_code' => $request->zip_code ?: '23434',
+                'city' => $request->city ?: 'Jeddah',
                 'district' => $request->district,
-                'state' => $request->state,
-                'country' => 'India',
-                'delivery_amount'=>$request->delivery_amount,
+                'state' => 'Makkah',
+                'country' => 'Saudi Arabia',
+                'delivery_amount' => $request->delivery_amount ?: 0,
             ]);
 
             $order->update([

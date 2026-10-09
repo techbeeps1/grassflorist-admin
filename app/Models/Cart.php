@@ -154,7 +154,7 @@ class Cart extends Model
 
         $itemsSummary = [];
         foreach ($this->items->take(3) as $item) {
-            $productName = $item->product?->name ?? 'Book';
+            $productName = $item->product?->name ?? 'Product';
             if (strlen($productName) > 40) {
                 $productName = substr($productName, 0, 37) . '...';
             }
@@ -167,12 +167,12 @@ class Cart extends Model
             $itemsText .= "\n- and {$remaining} more item(s)";
         }
 
-        $appName = config('app.name', 'Bookwindow');
+        $appName = config('app.name', 'Grass Florist');
 
         return "Dear {$name},\n\n" .
             "You have items waiting in your shopping bag on {$appName}:\n" .
             "{$itemsText}\n\n" .
-            "Total Cart Value: ₹{$total}\n\n" .
+            "Total Cart Value: {$total} SAR\n\n" .
             "Direct link to complete your order:\n" .
             "{$recoveryUrl}\n\n" .
             "If you need any assistance or have questions, please reply to this message. We are here to help.\n\n" .

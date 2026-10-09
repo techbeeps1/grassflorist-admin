@@ -15,8 +15,10 @@ class CategoryController extends Controller
             $request->routeIs('*en*') ||
             $request->segment(1) === 'en' ||
             $request->segment(2) === 'en' ||
+            $request->query('locale') === 'en' ||
             $request->query('lang') === 'en' ||
-            $request->header('X-Locale') === 'en'
+            $request->header('X-Locale') === 'en' ||
+            str_starts_with((string) $request->header('Accept-Language', ''), 'en')
         ) {
             return 'en';
         }
@@ -25,6 +27,7 @@ class CategoryController extends Controller
             $request->routeIs('*ar*') ||
             $request->segment(1) === 'ar' ||
             $request->segment(2) === 'ar' ||
+            $request->query('locale') === 'ar' ||
             $request->query('lang') === 'ar' ||
             $request->header('X-Locale') === 'ar'
         ) {

@@ -21,6 +21,13 @@ class HomePage extends Model
         'best_sellers_title',
         'best_sellers_subtitle',
         'latest_products_title',
+        'blog_title',
+        'blog_subtitle',
+        'testimonials_title',
+        'testimonials_subtitle',
+        'faq_title',
+        'faq_subtitle',
+        'banner_title',
         'banner_description',
         'banner_button_title',
         'cat_sec_title',
@@ -47,6 +54,8 @@ class HomePage extends Model
         'best_sellers' => 'array',
         'categories' => 'array',
         'custom_sections' => 'array',
+        'benefits_section' => 'array',
+        'events_section' => 'array',
     ];
     
     public function featuredProducts()

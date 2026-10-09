@@ -8,7 +8,10 @@ use App\Mail\ContactFormMail;
 use App\Mail\TutorFormSubmitted;
 use App\Mail\VendorRegistrationSubmitted;
 use App\Mail\ProductRequestSubmitted;
+use App\Models\ContactPage;
+use App\Models\ContactInquiry;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 
@@ -18,18 +21,64 @@ class ContactFormController extends Controller
     {
         $validated = $request->validated();
 
-        // Send email to admin
-        Mail::to(env('ADMIN_EMAIL'))
-            ->send(new ContactFormMail(
-                $validated['first_name'],
-                $validated['last_name'],
-                $validated['email'],
-                $validated['subject'],
-                $validated['emailMessage'],
-            ));
+        $name = !empty($validated['name'])
+            ? trim($validated['name'])
+            : trim(($validated['first_name'] ?? '') . ' ' . ($validated['last_name'] ?? ''));
+
+        if (empty($name)) {
+            $name = 'Guest Visitor';
+        }
+
+        $email = $validated['email'];
+        $phone = $validated['phone'] ?? null;
+        $subject = $validated['subject'] ?? null;
+        $message = $validated['message'] ?? ($validated['emailMessage'] ?? '');
+
+        // 1. Save submission to database
+        $inquiry = ContactInquiry::create([
+            'name' => $name,
+            'email' => $email,
+            'phone' => $phone,
+            'subject' => $subject,
+            'message' => $message,
+            'ip_address' => $request->ip(),
+            'status' => 'new',
+        ]);
+
+        // 2. Fetch destination email and subject template from Contact Page settings
+        $contactPage = ContactPage::first();
+        $recipientSetting = $contactPage?->notification_email
+            ?: ($contactPage?->email ?: ($contactPage?->con_email ?: config('mail.from.address', 'info@grassflorist.com')));
+
+        $configuredSubject = $contactPage?->email_subject ?: 'New Contact Inquiry from Grass Florist Website';
+        $finalSubject = !empty($subject) ? "{$configuredSubject}: {$subject}" : $configuredSubject;
+
+        $recipients = array_values(array_filter(array_map('trim', explode(',', $recipientSetting))));
+        if (empty($recipients)) {
+            $recipients = ['info@grassflorist.com'];
+        }
+
+        // 3. Send email notification
+        try {
+            Mail::to($recipients)
+                ->send(new ContactFormMail(
+                    $name,
+                    $email,
+                    $phone,
+                    $finalSubject,
+                    $message
+                ));
+        } catch (\Throwable $e) {
+            Log::error('[ContactFormController] Failed to send contact email notification: ' . $e->getMessage(), [
+                'inquiry_id' => $inquiry->id,
+                'recipients' => $recipients,
+            ]);
+        }
 
         return response()->json([
-            'message' => 'Your message has been sent successfully!'
+            'success' => true,
+            'message' => 'Your message has been sent successfully! Our concierge will contact you shortly.',
+            'inquiry_id' => $inquiry->id,
         ], 200);
     }
 

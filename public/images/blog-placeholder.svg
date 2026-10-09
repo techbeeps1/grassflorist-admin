@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FAF6F0"/>
+      <stop offset="50%" stop-color="#F4ECE1"/>
+      <stop offset="100%" stop-color="#EBE2D3"/>
+    </linearGradient>
+    <radialGradient id="glowGrad" cx="50%" cy="45%" r="50%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="500" fill="url(#bgGrad)"/>
+  <rect width="800" height="500" fill="url(#glowGrad)"/>
+
+  <!-- Subtle Elegant Border Frame -->
+  <rect x="24" y="24" width="752" height="452" rx="16" fill="none" stroke="#DDD2C1" stroke-width="1.5" stroke-dasharray="6 4" opacity="0.6"/>
+
+  <!-- Botanical Leaf Sketches (Left & Right Background Accents) -->
+  <g opacity="0.12" fill="none" stroke="#2D3F33" stroke-width="2" stroke-linecap="round">
+    <!-- Left foliage -->
+    <path d="M 60 440 C 90 380, 110 320, 160 280 C 180 300, 190 340, 160 370 C 130 400, 90 420, 60 440 Z"/>
+    <path d="M 120 340 C 140 310, 170 300, 200 310 C 190 330, 170 350, 140 355 Z"/>
+    <path d="M 80 410 C 120 350, 160 300, 220 270"/>
+
+    <!-- Right foliage -->
+    <path d="M 740 60 C 710 120, 690 180, 640 220 C 620 200, 610 160, 640 130 C 670 100, 710 80, 740 60 Z"/>
+    <path d="M 680 160 C 660 190, 630 200, 600 190 C 610 170, 630 150, 660 145 Z"/>
+    <path d="M 720 90 C 680 150, 640 200, 580 230"/>
+  </g>
+
+  <!-- Central Botanical Emblem Badge -->
+  <g transform="translate(400, 210)">
+    <!-- Soft Outer Circle -->
+    <circle r="64" fill="#FFFFFF" opacity="0.85" filter="drop-shadow(0px 8px 16px rgba(45,63,51,0.06))"/>
+    <circle r="56" fill="none" stroke="#D1C5B0" stroke-width="1.2"/>
+
+    <!-- Modern Floral Bloom Icon -->
+    <g transform="translate(0, -2)" stroke="#2D3F33" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <!-- Petals -->
+      <path d="M 0 -24 C 8 -16, 8 -8, 0 0 C -8 -8, -8 -16, 0 -24 Z" fill="#E8E2D5" opacity="0.5"/>
+      <path d="M 24 0 C 16 8, 8 8, 0 0 C 8 -8, 16 -8, 24 0 Z" fill="#E8E2D5" opacity="0.5"/>
+      <path d="M 0 24 C -8 16, -8 8, 0 0 C 8 8, 8 16, 0 24 Z" fill="#E8E2D5" opacity="0.5"/>
+      <path d="M -24 0 C -16 -8, -8 -8, 0 0 C -8 8, -16 8, -24 0 Z" fill="#E8E2D5" opacity="0.5"/>
+
+      <!-- Diagonal Petals -->
+      <path d="M 17 -17 C 14 -8, 8 -4, 0 0 C 4 -8, 8 -14, 17 -17 Z" fill="#8CB83E" opacity="0.4"/>
+      <path d="M 17 17 C 8 14, 4 8, 0 0 C 8 4, 14 8, 17 17 Z" fill="#8CB83E" opacity="0.4"/>
+      <path d="M -17 17 C -14 8, -8 4, 0 0 C -4 8, -8 14, -17 17 Z" fill="#8CB83E" opacity="0.4"/>
+      <path d="M -17 -17 C -8 -14, -4 -8, 0 0 C -8 -4, -14 -8, -17 -17 Z" fill="#8CB83E" opacity="0.4"/>
+
+      <!-- Center Pistil -->
+      <circle cx="0" cy="0" r="4.5" fill="#2D3F33"/>
+    </g>
+  </g>
+
+  <!-- Typography -->
+  <!-- Brand Name -->
+  <text x="400" y="320" text-anchor="middle" font-family="'Cinzel', 'Playfair Display', Georgia, serif" font-size="20" font-weight="700" letter-spacing="4" fill="#201B18">
+    GRASS FLORIST
+  </text>
+
+  <!-- Divider Line with Diamond -->
+  <g transform="translate(400, 342)" opacity="0.6">
+    <line x1="-60" y1="0" x2="-12" y2="0" stroke="#8CB83E" stroke-width="1"/>
+    <polygon points="0,-3 3,0 0,3 -3,0" fill="#8CB83E"/>
+    <line x1="12" y1="0" x2="60" y2="0" stroke="#8CB83E" stroke-width="1"/>
+  </g>
+
+  <!-- Section Subtitle -->
+  <text x="400" y="368" text-anchor="middle" font-family="'Plus Jakarta Sans', system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" letter-spacing="2" fill="#756A60">
+    BOTANICAL JOURNAL
+  </text>
+</svg>

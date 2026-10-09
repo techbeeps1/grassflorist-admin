@@ -3,7 +3,6 @@
 namespace App\Mail;
 
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
@@ -13,24 +12,27 @@ class ContactFormMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public $firstName;
-    public $lastName;
-    public $email;
-    public $subject;
-    public $emailMessage;
+    public string $name;
+    public string $email;
+    public ?string $phone;
+    public string $emailSubject;
+    public string $clientMessage;
 
     /**
      * Create a new message instance.
      */
-    public function __construct($firstName, $lastName, $email, $subject, $emailMessage)
-    {
-        $this->firstName = (string)$firstName;
-        $this->lastName = (string)$lastName;
-        $this->email = (string)$email;
-        $this->subject = (string)$subject;
-        $this->emailMessage = (string)$emailMessage;
-
-        
+    public function __construct(
+        string $name,
+        string $email,
+        ?string $phone,
+        string $emailSubject,
+        string $clientMessage
+    ) {
+        $this->name = $name;
+        $this->email = $email;
+        $this->phone = $phone;
+        $this->emailSubject = $emailSubject;
+        $this->clientMessage = $clientMessage;
     }
 
     /**
@@ -39,8 +41,8 @@ class ContactFormMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Bookwindow Contact Form',
-            to: 'qasimmizbah@gmail.com', // This sets the recipient
+            subject: $this->emailSubject,
+            replyTo: [$this->email],
         );
     }
 
@@ -51,6 +53,17 @@ class ContactFormMail extends Mailable
     {
         return new Content(
             view: 'emails.contact-form',
+            with: [
+                'name' => $this->name,
+                'email' => $this->email,
+                'phone' => $this->phone,
+                'subject' => $this->emailSubject,
+                'clientMessage' => $this->clientMessage,
+                // Backward compatibility for view variables
+                'firstName' => $this->name,
+                'lastName' => '',
+                'emailMessage' => $this->clientMessage,
+            ],
         );
     }
 

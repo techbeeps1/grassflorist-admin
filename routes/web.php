@@ -47,6 +47,16 @@ Route::get('/docs/swagger', function () {
     return view('swagger');
 })->name('docs.swagger');
 
+// ⭐ Google Reviews CSV Export & Template Routes
+Route::get('/admin/google-reviews/export-csv', function () {
+    return \App\Services\GoogleReviewCsvService::exportCsv();
+})->name('google_reviews.export_csv');
+
+Route::get('/admin/google-reviews/sample-template', function () {
+    return \App\Services\GoogleReviewCsvService::downloadSampleCsv();
+})->name('google_reviews.sample_template');
+
+
  // Route::get('/api/categories', [CategoryController::class, 'index']);
  // Route::get('/api/products', [ProductController::class, 'index']);
  // Route::get('/api/products/{slug}', [ProductController::class, 'show']);

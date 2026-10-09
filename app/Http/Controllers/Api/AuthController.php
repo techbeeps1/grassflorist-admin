@@ -102,9 +102,10 @@ class AuthController extends Controller
         $credentials = $request->only('email', 'password');
 
         if (! $token = auth('customer')->attempt($credentials)) {
-            throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.'],
-            ]);
+            return response()->json([
+                'error' => 'The provided credentials are incorrect.',
+                'message' => 'The provided credentials are incorrect.',
+            ], 401);
         }
 
         return response()->json([
@@ -223,42 +224,33 @@ class AuthController extends Controller
                 $validated = $request->validate([
                     'first_name' => 'required|string|max:255',
                     'last_name' => 'required|string|max:255',
-                    'phone' => ['sometimes', 'nullable', 'regex:/^(\+91[\-\s]?)?[0]?[6-9]\d{9}$/'],
-                ], [
-                    'phone.regex' => 'Please enter a valid 10-digit mobile number.',
+                    'phone' => 'sometimes|nullable|string',
+                    'country' => 'sometimes|nullable|string',
                 ]);
 
-                $cleanPhone = null;
-                if ($request->filled('phone')) {
-                    $cleanPhone = preg_replace('/\D/', '', (string)$request->phone);
-                    if (str_starts_with($cleanPhone, '91') && strlen($cleanPhone) > 10) {
-                        $cleanPhone = substr($cleanPhone, 2);
-                    } elseif (str_starts_with($cleanPhone, '0') && strlen($cleanPhone) > 10) {
-                        $cleanPhone = substr($cleanPhone, 1);
-                    }
+                $cleanPhone = $request->phone;
+
+                // Find by email or user_id
+                $customer = Customer::where('email', $request->email)->first();
+                if (!$customer && $request->filled('user_id')) {
+                    $customer = Customer::find($request->user_id);
                 }
 
-                    // Find by email
-                    $customer = Customer::where('email', $request['email'])->first();
-
-                    // Or find by user_id
-                    // $customer = Customer::where('user_id', $validated['user_id'])->first();
-
-                    if ($customer) {
+                if ($customer) {
                     $customer->update([
-                    'first_name' => $validated['first_name'],
-                    'last_name' => $validated['last_name'],
-                    'phone' => $cleanPhone ?? $customer->phone,
-                    'city' => $request['city'],
-                    'district' => $request['district'] ?? null,
-                    'address' => $request['address'],
-                    'address_2' => $request['address_2'],
-                    'zip_code' => $request['zip_code'],
-                    'state' => $request['state'],
-                    'date_of_birth' => $request['date_of_birth'],
-                    'country' => 'India',
+                        'first_name' => $validated['first_name'],
+                        'last_name' => $validated['last_name'],
+                        'phone' => $cleanPhone ?? $customer->phone,
+                        'city' => $request['city'] ?? $customer->city,
+                        'district' => $request['district'] ?? $customer->district,
+                        'address' => $request['address'] ?? $customer->address,
+                        'address_2' => $request['address_2'] ?? $customer->address_2,
+                        'zip_code' => $request['zip_code'] ?? $customer->zip_code,
+                        'state' => $request['state'] ?? $customer->state,
+                        'date_of_birth' => $request['date_of_birth'] ?? $customer->date_of_birth,
+                        'country' => $request['country'] ?? $customer->country ?? 'Saudi Arabia',
                     ]);
-                    }
+                }
 
                 
 

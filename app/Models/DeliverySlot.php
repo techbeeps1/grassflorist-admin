@@ -38,14 +38,23 @@ class DeliverySlot extends Model
     }
 
     /**
-     * Get active slots for a given date taking into account Friday vs Regular days and cutoffs.
+     * Get active slots for a given date taking into account Friday vs Regular days, cutoffs, and blocked holiday dates.
      */
     public static function getSlotsForDate(string $date)
     {
-        $targetDate = Carbon::parse($date);
+        $timezone = \App\Models\GlobalSetting::current()->timezone ?: 'Asia/Riyadh';
+        $currentTime = Carbon::now($timezone);
+        $targetDate = Carbon::parse($date, $timezone);
+        $dateStr = $targetDate->toDateString();
+
+        // 1. Check if the entire date is blocked (Holiday or store closure)
+        $allDayBlocked = DeliveryBlockedDate::getBlockedInfoForDate($dateStr);
+        if ($allDayBlocked) {
+            return collect([]);
+        }
+
         $isFriday = $targetDate->isFriday();
-        $isToday = $targetDate->isToday();
-        $currentTime = Carbon::now();
+        $isToday = $dateStr === $currentTime->toDateString();
 
         $dayType = $isFriday ? 'friday' : 'regular';
 
@@ -54,11 +63,18 @@ class DeliverySlot extends Model
             ->orderBy('sort_order', 'asc')
             ->get();
 
-        return $slots->map(function ($slot) use ($isToday, $currentTime, $targetDate) {
+        return $slots->map(function ($slot) use ($isToday, $currentTime, $targetDate, $dateStr) {
             $isAvailable = true;
             $cutoffReason = null;
 
-            if ($isToday && $slot->start_time) {
+            // Check if this specific slot is blocked on this date
+            $slotBlocked = DeliveryBlockedDate::getBlockedInfoForDate($dateStr, $slot->id);
+            if ($slotBlocked) {
+                $isAvailable = false;
+                $cutoffReason = $slotBlocked['reason'] ?: 'Slot blocked for this date.';
+            }
+
+            if ($isAvailable && $isToday && $slot->start_time) {
                 $slotStart = Carbon::parse($targetDate->toDateString() . ' ' . $slot->start_time);
                 $cutoffTime = $slotStart->copy()->subHours($slot->cutoff_hours_before ?? 0);
 

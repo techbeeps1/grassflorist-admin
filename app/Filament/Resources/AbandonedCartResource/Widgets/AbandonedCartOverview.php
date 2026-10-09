@@ -47,10 +47,10 @@ class AbandonedCartOverview extends BaseWidget
 
         return [
             Stat::make('Abandoned Carts', number_format($abandonedCount))
-                ->description('Potential Value: ₹' . number_format($abandonedValue, 2))
+                ->description('Potential Value: ' . number_format($abandonedValue, 2) . ' SAR')
                 ->color('warning'),
 
-            Stat::make('Recovered Revenue', '₹' . number_format($recoveredRevenue, 2))
+            Stat::make('Recovered Revenue', number_format($recoveredRevenue, 2) . ' SAR')
                 ->description($recoveredCount . ' carts converted to orders')
                 ->color('success'),
 
