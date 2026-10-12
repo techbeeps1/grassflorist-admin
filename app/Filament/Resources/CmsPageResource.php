@@ -25,7 +25,8 @@ class CmsPageResource extends Resource
     protected static ?string $model = CmsPage::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-pencil-square';
-    protected static ?string $navigationGroup = 'Pages';
+    protected static ?string $navigationGroup = 'Content & Storefront';
+    protected static ?int $navigationSort = 4;
     protected static ?string $modelLabel = 'Page';
     protected static ?string $pluralModelLabel = 'Pages';
 

@@ -150,12 +150,17 @@
         }
     </style>
 </head>
-<body>
-<div class="container">
-    <div class="header">
-        <img src="https://admin.bookwindow.in/storage/app/public/logo.png" alt="{{ config('app.name') }} Logo">
-        <h1>BookWindow Seller Support Notice</h1>
-        <p>Important information regarding your vendor account status</p>
+    @php
+        $logoPath = public_path('images/grass-logo.webp');
+        $brandLogo = file_exists($logoPath)
+            ? ('data:image/webp;base64,' . base64_encode(file_get_contents($logoPath)))
+            : asset('images/grass-logo.webp');
+    @endphp
+<div class="container" style="border: 1px solid #EFE7DC; border-radius: 12px; overflow: hidden; background: #ffffff;">
+    <div class="header" style="background-color: #2D3F33; border-bottom: 3px solid #8fae2a; padding: 24px; text-align: center;">
+        <img src="{{ $brandLogo }}" alt="Grass Florist Logo" style="max-width: 130px; height: auto; display: block; margin: 0 auto; filter: brightness(0) invert(1);">
+        <h1 style="color: #ffffff; font-size: 20px; margin-top: 10px;">Grass Florist Merchant Notice</h1>
+        <p style="color: #C2D4BE; font-size: 12px;">Important information regarding your vendor account status</p>
     </div>
 
     <div class="content">
@@ -210,25 +215,25 @@
         </p>
 
         <div class="btn-container">
-            <a href="mailto:info@bookwindow.in?subject=Vendor%20Account%20Status%20Inquiry%20-%20{{ urlencode($vendor->vendor_name) }}" class="btn">Contact Seller Compliance Desk</a>
+            <a href="mailto:info@grassflorist.com?subject=Vendor%20Account%20Status%20Inquiry%20-%20{{ urlencode($vendor->vendor_name) }}" class="btn">Contact Merchant Compliance Desk</a>
         </div>
 
         <p style="font-size: 13px; color: #64748b; margin-top: 24px;">
-            Email: <a href="mailto:info@bookwindow.in" style="color: #0284c7; font-weight: 600;">info@bookwindow.in</a><br>
+            Email: <a href="mailto:info@grassflorist.com" style="color: #8fae2a; font-weight: 600;">info@grassflorist.com</a><br>
             Please reference your registered store name (<strong>{{ $vendor->vendor_name }}</strong>) in all communications.
         </p>
 
         <p style="font-size: 13px; color: #64748b;">
             Sincerely,<br>
-            <strong>The BookWindow Platform Compliance Team</strong>
+            <strong>The Grass Florist Merchant Compliance Team</strong>
         </p>
     </div>
 
     <div class="footer">
         <p>&copy; {{ date('Y') }} {{ config('app.name') }}. All rights reserved.</p>
         <p>
-            <a href="{{ config('app.frontend_url', 'https://bookwindow.in') }}/privacy">Privacy Policy</a> | 
-            <a href="{{ config('app.frontend_url', 'https://bookwindow.in') }}/terms">Terms of Service</a>
+            <a href="{{ config('app.frontend_url', 'https://grassflorist.com') }}/privacy">Privacy Policy</a> | 
+            <a href="{{ config('app.frontend_url', 'https://grassflorist.com') }}/terms">Terms of Service</a>
         </p>
     </div>
 </div>

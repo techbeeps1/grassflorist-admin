@@ -14,8 +14,8 @@ class EventBookingResource extends Resource
 {
     protected static ?string $model = EventBooking::class;
     protected static ?string $navigationIcon = 'heroicon-o-calendar-days';
-    protected static ?string $navigationGroup = 'Pages';
-    protected static ?int $navigationSort = 3;
+    protected static ?string $navigationGroup = 'Inquiries & Leads';
+    protected static ?int $navigationSort = 2;
     protected static ?string $modelLabel = 'Event Booking';
     protected static ?string $pluralModelLabel = 'Event Bookings';
 

@@ -236,6 +236,13 @@ class GlobalSettingResource extends Resource
                                             ->label('ZATCA Tax Registration Number / الرقم الضريبي الموحد')
                                             ->placeholder('300000000000003')
                                             ->helperText('15-digit Tax Identification Number registered with ZATCA (هيئة الزكاة والضريبة والجمارك) printed on invoices.'),
+
+                                        Forms\Components\Toggle::make('is_vat_included')
+                                            ->label('Prices Include VAT / الأسعار شاملة الضريبة')
+                                            ->helperText('OFF (Default / Exclusive): 15% VAT is added on top of the subtotal at checkout. ON (Inclusive): Product prices already include VAT.')
+                                            ->default(false)
+                                            ->inline(false)
+                                            ->columnSpanFull(),
                                     ])
                                     ->columns(2),
 
@@ -318,11 +325,8 @@ class GlobalSettingResource extends Resource
                                         Forms\Components\TextInput::make('contact_email')
                                             ->label('Official Support Email')
                                             ->email()
-                                            ->placeholder('info@grassflorist.com'),
-
-                                        Forms\Components\TextInput::make('business_hours')
-                                            ->label('Store & Concierge Working Hours')
-                                            ->placeholder('Daily 9:00 AM – 11:30 PM AST'),
+                                            ->placeholder('info@grassflorist.com')
+                                            ->columnSpanFull(),
                                     ])
                                     ->columns(2),
 
@@ -591,6 +595,259 @@ class GlobalSettingResource extends Resource
                                             ->helperText('Direct URL that opens Google review popup when customer clicks "Write a Review". If blank, it uses Business Profile URL.')
                                             ->columnSpanFull(),
                                     ]),
+                            ]),
+
+                        // =========================================================================
+                        // TAB 9: MSEGAT SMS GATEWAY (بوابة الرسائل النصية مسجات)
+                        // =========================================================================
+                        Forms\Components\Tabs\Tab::make('Msegat SMS Gateway')
+                            ->icon('heroicon-o-chat-bubble-left-right')
+                            ->schema([
+                                Forms\Components\Section::make('Msegat Integration (الربط مع بوابة مسجات)')
+                                    ->description('Configure Msegat.com Saudi SMS gateway credentials to send automated order, delivery, and customer SMS.')
+                                    ->headerActions([
+                                        Forms\Components\Actions\Action::make('check_balance')
+                                            ->label('Check Msegat Balance')
+                                            ->icon('heroicon-o-currency-dollar')
+                                            ->color('info')
+                                            ->action(function (\App\Services\Notifications\MsegatSmsService $smsService) {
+                                                $res = $smsService->checkCredits();
+                                                if ($res['success']) {
+                                                    \Filament\Notifications\Notification::make()
+                                                        ->title('Msegat Balance Active')
+                                                        ->body($res['message'])
+                                                        ->success()
+                                                        ->send();
+                                                } else {
+                                                    \Filament\Notifications\Notification::make()
+                                                        ->title('Msegat Balance Check Failed')
+                                                        ->body($res['message'])
+                                                        ->danger()
+                                                        ->send();
+                                                }
+                                            }),
+                                        Forms\Components\Actions\Action::make('test_sms')
+                                            ->label('Send Test SMS')
+                                            ->icon('heroicon-o-paper-airplane')
+                                            ->color('success')
+                                            ->form([
+                                                Forms\Components\TextInput::make('test_mobile')
+                                                    ->label('Recipient Mobile Number')
+                                                    ->placeholder('0501234567 or 966501234567')
+                                                    ->required(),
+                                                Forms\Components\TextInput::make('test_msg')
+                                                    ->label('Message Text')
+                                                    ->default('تجربة إرسال رسالة نصية من متجر غراس فلوريست عبر بوابة مسجات - Grass Florist Test SMS')
+                                                    ->required(),
+                                            ])
+                                            ->action(function (array $data, \App\Services\Notifications\MsegatSmsService $smsService) {
+                                                $res = $smsService->send($data['test_mobile'], $data['test_msg'], 'test_msegat_connection');
+                                                if ($res['success']) {
+                                                    \Filament\Notifications\Notification::make()
+                                                        ->title('Test SMS Delivered!')
+                                                        ->body("Message sent successfully to {$data['test_mobile']}")
+                                                        ->success()
+                                                        ->send();
+                                                } else {
+                                                    \Filament\Notifications\Notification::make()
+                                                        ->title('Test SMS Failed')
+                                                        ->body($res['message'])
+                                                        ->danger()
+                                                        ->persistent()
+                                                        ->send();
+                                                }
+                                            }),
+                                    ])
+                                    ->schema([
+                                        Forms\Components\Toggle::make('msegat_sms_enabled')
+                                            ->label('Enable Msegat SMS Gateway (تفعيل إرسال الرسائل عبر مسجات)')
+                                            ->helperText('Turn on to send live SMS for orders, inquiries, and delivery updates.')
+                                            ->default(false)
+                                            ->columnSpanFull(),
+
+                                        Forms\Components\TextInput::make('msegat_username')
+                                            ->label('Msegat Account Username (اسم المستخدم)')
+                                            ->placeholder('e.g. grassflorist')
+                                            ->helperText('Your registered username on msegat.com'),
+
+                                        Forms\Components\TextInput::make('msegat_api_key')
+                                            ->label('Msegat API Key (مفتاح الربط البرمجي)')
+                                            ->password()
+                                            ->revealable()
+                                            ->placeholder('e.g. 7f89cxxxxxxxxxxxxxx')
+                                            ->helperText('Your private API Key generated from Msegat account settings'),
+
+                                        Forms\Components\TextInput::make('msegat_user_sender')
+                                            ->label('Approved Sender Name (اسم المرسل المعتمد)')
+                                            ->placeholder('Grass')
+                                            ->helperText('Registered Sender ID approved in Msegat (English letters/numbers only)'),
+                                    ])
+                                    ->columns(2),
+                            ]),
+
+                        // =========================================================================
+                        // TAB 7: EMAIL TEMPLATES BRANDING (تخصيص وهوية قوالب البريد)
+                        // =========================================================================
+                        Forms\Components\Tabs\Tab::make('Email Templates Branding')
+                            ->icon('heroicon-o-envelope')
+                            ->schema([
+                                Forms\Components\Section::make('Email Header & Logo (شعار وترويسة البريد)')
+                                    ->description('Customize the visual appearance of all transactional and notification emails.')
+                                    ->schema([
+                                        Forms\Components\FileUpload::make('email_logo')
+                                            ->label('Email Header Logo File (رفع ملف الشعار)')
+                                            ->image()
+                                            ->imageEditor()
+                                            ->disk('public')
+                                            ->directory('settings/emails')
+                                            ->visibility('public')
+                                            ->helperText('Upload image file (PNG, SVG, WEBP). Used if direct URL is empty.')
+                                            ->columnSpan(1),
+
+                                        Forms\Components\TextInput::make('email_custom_logo_url')
+                                            ->label('Or Enter Logo Direct URL (أو رابط الشعار المباشر / موقع خارجي)')
+                                            ->placeholder('https://example.com/images/logo.png')
+                                            ->url()
+                                            ->helperText('Enter logo URL from another website, CDN or external host. If provided, this URL will be used in emails.')
+                                            ->columnSpan(1),
+
+                                        Forms\Components\TextInput::make('email_title_en')
+                                            ->label('Brand Title (English)')
+                                            ->default('Grass Florist')
+                                            ->placeholder('Grass Florist'),
+
+                                        Forms\Components\TextInput::make('email_title_ar')
+                                            ->label('Brand Title (Arabic)')
+                                            ->default('غراس فلوريست')
+                                            ->placeholder('غراس فلوريست'),
+
+                                        Forms\Components\TextInput::make('email_subtitle_en')
+                                            ->label('Brand Subtitle (English)')
+                                            ->default('Luxury Floral Atelier & Curated Gifting')
+                                            ->placeholder('Luxury Floral Atelier & Curated Gifting'),
+
+                                        Forms\Components\TextInput::make('email_subtitle_ar')
+                                            ->label('Brand Subtitle (Arabic)')
+                                            ->default('متجر الزهور والهدايا الفاخرة')
+                                            ->placeholder('متجر الزهور والهدايا الفاخرة'),
+                                    ])
+                                    ->columns(2),
+
+                                Forms\Components\Section::make('Color Palette & Theme (ألوان وهوية القالب)')
+                                    ->description('Select the colors for email header, backgrounds, and action buttons.')
+                                    ->schema([
+                                        Forms\Components\ColorPicker::make('email_header_bg_color')
+                                            ->label('Header Background Color (خلفية الترويسة)')
+                                            ->default('#2D3F33')
+                                            ->helperText('Default: #2D3F33 (Luxury Forest Green)'),
+
+                                        Forms\Components\ColorPicker::make('email_body_bg_color')
+                                            ->label('Email Page Background (خلفية الصفحة)')
+                                            ->default('#FAF8F5')
+                                            ->helperText('Default: #FAF8F5 (Soft Ivory)'),
+
+                                        Forms\Components\ColorPicker::make('email_card_bg_color')
+                                            ->label('Card Background Color (خلفية البطاقات)')
+                                            ->default('#FAF8F5')
+                                            ->helperText('Default: #FAF8F5 (Warm Cream)'),
+
+                                        Forms\Components\ColorPicker::make('email_accent_color')
+                                            ->label('Button & Accent Color (لون الأزرار والتمييز)')
+                                            ->default('#8fae2a')
+                                            ->helperText('Default: #8fae2a (Olive Leaf Green)'),
+                                    ])
+                                    ->columns(2),
+
+                                Forms\Components\Section::make('Email Footer Details (بيانات تذييل البريد)')
+                                    ->description('Contact info, legal store name, and copyright notice displayed in the email footer.')
+                                    ->schema([
+                                        Forms\Components\TextInput::make('email_footer_name_en')
+                                            ->label('Footer Store Legal Name (English)')
+                                            ->default('Grass Florist Atelier — Saudi Arabia'),
+
+                                        Forms\Components\TextInput::make('email_footer_name_ar')
+                                            ->label('Footer Store Legal Name (Arabic)')
+                                            ->default('مؤسسة غراس السعودية للزهور والهدايا'),
+
+                                        Forms\Components\TextInput::make('email_footer_address_en')
+                                            ->label('Footer Address (English)')
+                                            ->default('Jeddah, Kingdom of Saudi Arabia'),
+
+                                        Forms\Components\TextInput::make('email_footer_address_ar')
+                                            ->label('Footer Address (Arabic)')
+                                            ->default('جدة، المملكة العربية السعودية'),
+
+                                        Forms\Components\TextInput::make('email_footer_phone')
+                                            ->label('Contact Phone (رقم التواصل)')
+                                            ->default('+966 50 000 0000'),
+
+                                        Forms\Components\TextInput::make('email_footer_email')
+                                            ->label('Contact Email (البريد الإلكتروني)')
+                                            ->default('info@grassflorist.com'),
+
+                                        Forms\Components\TextInput::make('email_footer_copyright_en')
+                                            ->label('Custom Copyright (English)')
+                                            ->placeholder('e.g. All rights reserved.'),
+
+                                        Forms\Components\TextInput::make('email_footer_copyright_ar')
+                                            ->label('Custom Copyright (Arabic)')
+                                            ->placeholder('مثال: جميع الحقوق محفوظة.'),
+                                    ])
+                                    ->columns(2),
+                            ]),
+
+                        // =========================================================================
+                        // TAB 7: ODOO ERP INTEGRATION (الربط مع نظام أودو المحاسبي)
+                        // =========================================================================
+                        Forms\Components\Tabs\Tab::make('Odoo ERP Integration')
+                            ->icon('heroicon-o-arrow-path-rounded-square')
+                            ->schema([
+                                Forms\Components\Section::make('Odoo Connection & API Credentials (بيانات الربط مع أودو)')
+                                    ->description('Configure Odoo ERP order synchronization endpoint and authentication token.')
+                                    ->schema([
+                                        Forms\Components\Toggle::make('odoo_enabled')
+                                            ->label('Enable Odoo ERP Sync (تفعيل المزامنة مع أودو)')
+                                            ->helperText('When enabled, paid orders will be synchronized with Odoo ERP.')
+                                            ->default(true),
+
+                                        Forms\Components\Toggle::make('odoo_auto_sync_on_paid')
+                                            ->label('Auto-Sync on Payment Capture (مزامنة تلقائية عند الدفع)')
+                                            ->helperText('Trigger sync immediately when an order is paid or marked processing.')
+                                            ->default(true),
+
+                                        Forms\Components\TextInput::make('odoo_api_url')
+                                            ->label('Odoo API Endpoint URL (رابط API أودو)')
+                                            ->default('https://odoo.grassflorist.com/website/api/order/upsert')
+                                            ->url()
+                                            ->required()
+                                            ->columnSpanFull(),
+
+                                        Forms\Components\TextInput::make('odoo_api_token')
+                                            ->label('Odoo Bearer Token (رمز التوثيق)')
+                                            ->password()
+                                            ->revealable()
+                                            ->columnSpanFull()
+                                            ->helperText('Used in Authorization: Bearer <token> HTTP header.'),
+                                    ])
+                                    ->columns(2),
+
+                                Forms\Components\Section::make('Testing & Developer Bypass Rules (قواعد استثناء حسابات الاختبار والتطوير)')
+                                    ->description('Define customer accounts, emails, or email domains that should NEVER be synced to Odoo.')
+                                    ->schema([
+                                        Forms\Components\Textarea::make('odoo_bypass_domains')
+                                            ->label('Bypass Email Domains (استثناء نطاقات الإيميل)')
+                                            ->placeholder("techbeeps.com\ntechbeeps.co.in")
+                                            ->helperText('Orders from these email domains will be skipped. Enter one per line or comma-separated.')
+                                            ->rows(3),
+
+                                        Forms\Components\Textarea::make('odoo_bypass_emails')
+                                            ->label('Bypass Specific Emails (استثناء إيميلات محددة)')
+                                            ->placeholder("gurjeet@techbeeps.com\ntest@example.com")
+                                            ->helperText('Orders with these exact emails will be skipped. Enter one per line or comma-separated.')
+                                            ->rows(3),
+
+                                    ])
+                                    ->columns(2),
                             ]),
                     ])
                     ->columnSpanFull(),

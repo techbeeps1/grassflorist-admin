@@ -4,6 +4,7 @@ namespace App\Services\Payments;
 
 use App\Models\Order;
 use App\Models\PaymentGateway;
+use App\Models\PaymentLog;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -59,15 +60,27 @@ class HyperPayService implements PaymentGatewayInterface
         $token = $this->getAccessToken();
 
         if (empty($token) || empty($entityId)) {
+            $msg = 'HyperPay credentials (Access Token or Entity ID) not configured in Admin Settings.';
+            PaymentLog::create([
+                'order_id' => $order->id,
+                'order_number' => $order->order_number ?? (string)$order->id,
+                'gateway' => 'hyperpay',
+                'event_type' => 'initiate',
+                'status' => 'failed',
+                'amount' => $order->total_amount,
+                'message' => $msg,
+                'payload' => ['brand' => $brand, 'error' => 'missing_credentials'],
+            ]);
+
             return [
                 'success' => false,
-                'message' => 'HyperPay credentials (Access Token or Entity ID) not configured in Admin Settings.',
+                'message' => $msg,
             ];
         }
 
         $params = [
             'entityId' => $entityId,
-            'amount' => number_format((float)$order->total_amount, 2, '.', ''),
+            'amount' => number_format((float)($order->sar_amount ?: $order->total_amount), 2, '.', ''),
             'currency' => 'SAR',
             'paymentType' => 'DB', // Direct Debit / Purchase
             'merchantTransactionId' => (string)($order->order_number ?? $order->id),
@@ -90,6 +103,18 @@ class HyperPayService implements PaymentGatewayInterface
             $data = $response->json();
 
             if ($response->successful() && !empty($data['id'])) {
+                PaymentLog::create([
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number ?? (string)$order->id,
+                    'gateway' => 'hyperpay',
+                    'event_type' => 'initiate',
+                    'status' => 'initiated',
+                    'razorpay_order_id' => $data['id'],
+                    'amount' => $order->total_amount,
+                    'message' => "HyperPay checkout session created: {$data['id']} (brand: {$brand})",
+                    'payload' => $data,
+                ]);
+
                 return [
                     'success' => true,
                     'checkout_id' => $data['id'],
@@ -100,13 +125,36 @@ class HyperPayService implements PaymentGatewayInterface
                 ];
             }
 
+            $errMsg = $data['result']['description'] ?? 'HyperPay checkout initiation failed.';
+            PaymentLog::create([
+                'order_id' => $order->id,
+                'order_number' => $order->order_number ?? (string)$order->id,
+                'gateway' => 'hyperpay',
+                'event_type' => 'initiate',
+                'status' => 'failed',
+                'amount' => $order->total_amount,
+                'message' => $errMsg,
+                'payload' => $data,
+            ]);
+
             return [
                 'success' => false,
-                'message' => $data['result']['description'] ?? 'HyperPay checkout initiation failed.',
+                'message' => $errMsg,
                 'raw' => $data,
             ];
         } catch (\Exception $e) {
             Log::error('HyperPay initiateCheckout error: ' . $e->getMessage());
+            PaymentLog::create([
+                'order_id' => $order->id,
+                'order_number' => $order->order_number ?? (string)$order->id,
+                'gateway' => 'hyperpay',
+                'event_type' => 'initiate',
+                'status' => 'error',
+                'amount' => $order->total_amount,
+                'message' => $e->getMessage(),
+                'payload' => ['exception' => $e->getMessage()],
+            ]);
+
             return [
                 'success' => false,
                 'message' => 'Exception in HyperPay initiateCheckout: ' . $e->getMessage(),
@@ -117,7 +165,7 @@ class HyperPayService implements PaymentGatewayInterface
     /**
      * Query / Verify transaction status directly from HyperPay API
      */
-    public function verifyPayment(string $referenceId, ?string $brand = null): array
+    public function verifyPayment(string $referenceId, ?string $brand = null, ?string $resourcePath = null): array
     {
         $entityId = $this->getEntityId($brand);
         $token = $this->getAccessToken();
@@ -131,13 +179,48 @@ class HyperPayService implements PaymentGatewayInterface
         }
 
         try {
-            $url = "{$this->baseUrl}/v1/checkouts/{$referenceId}/payment?entityId={$entityId}";
-            $response = Http::timeout(5)->withToken($token)->get($url);
-            $data = $response->json();
+            // Prioritize the matching entityId first
+            $entityIds = array_filter(array_unique([
+                $entityId,
+                $this->credentials['entity_id_mada'] ?? '',
+                $this->credentials['entity_id_visa_master'] ?? '',
+                $this->credentials['entity_id_applepay'] ?? '',
+                $this->credentials['entity_id_stcpay'] ?? '',
+            ]));
 
-            $resultCode = $data['result']['code'] ?? '';
-            // Regex for HyperPay successful transaction codes
-            $isSuccessful = (bool)preg_match('/^(000\.000\.|000\.100\.1|000\.[36])/', $resultCode);
+            $data = null;
+            $isSuccessful = false;
+            $resultCode = '';
+
+            $cleanResourcePath = !empty($resourcePath) ? '/' . ltrim(urldecode($resourcePath), '/') : null;
+
+            foreach ($entityIds as $currentEntityId) {
+                if ($cleanResourcePath && str_contains($cleanResourcePath, '/v1/checkouts/')) {
+                    $url = "{$this->baseUrl}{$cleanResourcePath}?entityId={$currentEntityId}";
+                } else {
+                    $url = "{$this->baseUrl}/v1/checkouts/{$referenceId}/payment?entityId={$currentEntityId}";
+                }
+
+                $response = Http::timeout(3.5)->withToken($token)->get($url);
+                $resData = $response->json();
+
+                if (is_array($resData) && !empty($resData['result']['code'])) {
+                    $data = $resData;
+                    $resultCode = $resData['result']['code'];
+                    $isSuccessful = (bool)preg_match('/^(000\.000\.|000\.100\.1|000\.[36]|000\.400\.[0-2])/', $resultCode);
+                    if ($isSuccessful) {
+                        break;
+                    }
+                }
+            }
+
+            if (!$data) {
+                return [
+                    'is_paid' => false,
+                    'status' => 'not_found',
+                    'message' => 'Transaction not found for reference ID.',
+                ];
+            }
 
             return [
                 'is_paid' => $isSuccessful,

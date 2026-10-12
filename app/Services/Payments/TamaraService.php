@@ -4,6 +4,7 @@ namespace App\Services\Payments;
 
 use App\Models\Order;
 use App\Models\PaymentGateway;
+use App\Models\PaymentLog;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -32,9 +33,21 @@ class TamaraService implements PaymentGatewayInterface
         $apiToken = $this->getApiToken();
 
         if (empty($apiToken)) {
+            $msg = 'Tamara API Token not configured in Admin Settings.';
+            PaymentLog::create([
+                'order_id' => $order->id,
+                'order_number' => $order->order_number ?? (string)$order->id,
+                'gateway' => 'tamara',
+                'event_type' => 'initiate',
+                'status' => 'failed',
+                'amount' => $order->total_amount,
+                'message' => $msg,
+                'payload' => ['error' => 'missing_credentials'],
+            ]);
+
             return [
                 'success' => false,
-                'message' => 'Tamara API Token not configured in Admin Settings.',
+                'message' => $msg,
             ];
         }
 
@@ -63,17 +76,24 @@ class TamaraService implements PaymentGatewayInterface
                 'sku' => 'FLOWER-BOUQUET',
                 'quantity' => 1,
                 'total_amount' => [
-                    'amount' => (float)$order->total_amount,
+                    'amount' => (float)($order->sar_amount ?: $order->total_amount),
                     'currency' => 'SAR',
                 ],
             ];
         }
 
+        $locale = $options['locale'] ?? app()->getLocale();
+        $prefix = $locale === 'ar' ? '' : '/en';
+        $frontendBase = $this->getFrontendUrl($options);
+        $returnUrl = $options['return_url'] ?? "{$frontendBase}{$prefix}/checkout?order_number={$order->order_number}&order_id={$order->id}&gateway=tamara&payment_success=1";
+        $cancelUrl = $options['cancel_url'] ?? "{$frontendBase}{$prefix}/checkout?order_number={$order->order_number}&order_id={$order->id}&gateway=tamara&cancelled=1";
+        $failureUrl = $options['failure_url'] ?? "{$frontendBase}{$prefix}/checkout?order_number={$order->order_number}&order_id={$order->id}&gateway=tamara&failed=1";
+
         $payload = [
             'order_reference_id' => (string)($order->order_number ?? $order->id),
             'order_number' => (string)($order->order_number ?? $order->id),
             'total_amount' => [
-                'amount' => (float)$order->total_amount,
+                'amount' => (float)($order->sar_amount ?: $order->total_amount),
                 'currency' => 'SAR',
             ],
             'description' => "Grass Florist Gift Order #{$order->order_number}",
@@ -96,9 +116,9 @@ class TamaraService implements PaymentGatewayInterface
                 'phone_number' => $order->recipient_phone ?? '+966500000000',
             ],
             'merchant_url' => [
-                'success' => url("/checkout/success?order_id={$order->id}"),
-                'cancel' => url("/checkout/cancel?order_id={$order->id}"),
-                'failure' => url("/checkout/failed?order_id={$order->id}"),
+                'success' => $returnUrl,
+                'cancel' => $cancelUrl,
+                'failure' => $failureUrl,
                 'notification' => url("/api/v1/webhooks/tamara"),
             ],
         ];
@@ -108,6 +128,18 @@ class TamaraService implements PaymentGatewayInterface
             $data = $response->json();
 
             if ($response->successful() && !empty($data['checkout_id'])) {
+                PaymentLog::create([
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number ?? (string)$order->id,
+                    'gateway' => 'tamara',
+                    'event_type' => 'initiate',
+                    'status' => 'initiated',
+                    'razorpay_order_id' => $data['checkout_id'],
+                    'amount' => $order->total_amount,
+                    'message' => "Tamara checkout session created: {$data['checkout_id']}",
+                    'payload' => $data,
+                ]);
+
                 return [
                     'success' => true,
                     'checkout_id' => $data['checkout_id'],
@@ -117,13 +149,37 @@ class TamaraService implements PaymentGatewayInterface
                 ];
             }
 
+            $errMsg = $data['message'] ?? $data['errors'][0]['error'] ?? 'Tamara checkout session creation failed.';
+            PaymentLog::create([
+                'order_id' => $order->id,
+                'order_number' => $order->order_number ?? (string)$order->id,
+                'gateway' => 'tamara',
+                'event_type' => 'initiate',
+                'status' => 'failed',
+                'amount' => $order->total_amount,
+                'message' => $errMsg,
+                'payload' => $data,
+            ]);
+
             return [
                 'success' => false,
-                'message' => $data['message'] ?? $data['errors'][0]['error'] ?? 'Tamara checkout session creation failed.',
+                'message' => $errMsg,
                 'raw' => $data,
             ];
         } catch (\Exception $e) {
             Log::error('Tamara initiateCheckout error: ' . $e->getMessage());
+
+            PaymentLog::create([
+                'order_id' => $order->id,
+                'order_number' => $order->order_number ?? (string)$order->id,
+                'gateway' => 'tamara',
+                'event_type' => 'initiate',
+                'status' => 'error',
+                'amount' => $order->total_amount,
+                'message' => $e->getMessage(),
+                'payload' => ['exception' => $e->getMessage()],
+            ]);
+
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -174,5 +230,25 @@ class TamaraService implements PaymentGatewayInterface
             'transaction_id' => $orderId,
             'raw' => $payload,
         ];
+    }
+
+    protected function getFrontendUrl(array $options = []): string
+    {
+        if (!empty($options['frontend_url'])) {
+            return rtrim($options['frontend_url'], '/');
+        }
+        $origin = request()->headers->get('origin') ?? request()->headers->get('referer');
+        if ($origin) {
+            $parsed = parse_url($origin);
+            if (!empty($parsed['scheme']) && !empty($parsed['host'])) {
+                $port = !empty($parsed['port']) ? ":{$parsed['port']}" : '';
+                return "{$parsed['scheme']}://{$parsed['host']}{$port}";
+            }
+        }
+        $envUrl = env('FRONTEND_URL', 'http://localhost:3000');
+        if (app()->environment('local') && !str_contains($envUrl, 'localhost')) {
+            return 'http://localhost:3000';
+        }
+        return rtrim($envUrl, '/');
     }
 }

@@ -58,21 +58,29 @@ class ContactFormController extends Controller
             $recipients = ['info@grassflorist.com'];
         }
 
-        // 3. Send email notification
+        // 3. Dispatch Email & SMS notifications via NotificationService
         try {
-            Mail::to($recipients)
-                ->send(new ContactFormMail(
-                    $name,
-                    $email,
-                    $phone,
-                    $finalSubject,
-                    $message
-                ));
+            /** @var \App\Services\Notifications\NotificationService $notificationService */
+            $notificationService = app(\App\Services\Notifications\NotificationService::class);
+            $notificationService->sendContactInquiryNotification($inquiry);
         } catch (\Throwable $e) {
-            Log::error('[ContactFormController] Failed to send contact email notification: ' . $e->getMessage(), [
+            Log::error('[ContactFormController] NotificationService error: ' . $e->getMessage(), [
                 'inquiry_id' => $inquiry->id,
-                'recipients' => $recipients,
             ]);
+
+            // Fallback direct email if NotificationService had an unexpected issue
+            try {
+                Mail::to($recipients)
+                    ->send(new ContactFormMail(
+                        $name,
+                        $email,
+                        $phone,
+                        $finalSubject,
+                        $message
+                    ));
+            } catch (\Throwable $fallbackEx) {
+                Log::error('[ContactFormController] Fallback mail also failed: ' . $fallbackEx->getMessage());
+            }
         }
 
         return response()->json([

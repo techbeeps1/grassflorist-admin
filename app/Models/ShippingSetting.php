@@ -50,8 +50,8 @@ class ShippingSetting extends Model
                 ['id' => 1],
                 [
                     'is_free_shipping_enabled' => true,
-                    'min_order_for_free_shipping' => 999.00,
-                    'default_flat_shipping' => 49.00,
+                    'min_order_for_free_shipping' => 250.00,
+                    'default_flat_shipping' => 30.00,
                     'is_weight_shipping_enabled' => true,
                     'packaging_buffer_weight' => 0.100,
                     'weight_slabs' => [

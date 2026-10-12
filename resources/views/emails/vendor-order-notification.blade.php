@@ -148,7 +148,7 @@
 
 <div class="container">
     <div class="header">
-        <h1>BookWindow Marketplace</h1>
+        <h1>Grass Florist Atelier</h1>
         <p>New Order Notification for {{ $vendor->vendor_name ?? 'Your Store' }}</p>
     </div>
 
@@ -175,12 +175,7 @@
 
         <div class="section-title">Products Ordered From Your Store</div>
         @php
-            $appUrl = config('app.url') ?: env('APP_URL');
-            if (empty($appUrl) || str_contains($appUrl, '127.0.0.1') || str_contains($appUrl, 'localhost')) {
-                $mediaBaseUrl = 'https://admin.bookwindow.in';
-            } else {
-                $mediaBaseUrl = rtrim($appUrl, '/');
-            }
+            $mediaBaseUrl = rtrim(config('app.url', 'https://grassflorist.com'), '/');
         @endphp
         <table class="items-table">
             <thead>
@@ -280,8 +275,8 @@
     </div>
 
     <div class="footer">
-        <p>&copy; {{ date('Y') }} BookWindow Platform. All rights reserved.</p>
-        <p>This is an automated notification sent to verified sellers on BookWindow.</p>
+        <p>&copy; {{ date('Y') }} Grass Florist Atelier. All rights reserved.</p>
+        <p>This is an automated notification sent to verified merchants on Grass Florist.</p>
     </div>
 </div>
 

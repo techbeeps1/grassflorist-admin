@@ -18,7 +18,9 @@ class UserResource extends Resource
 {
     protected static ?string $model = User::class;
     protected static ?string $navigationIcon = 'heroicon-o-users';
-    protected static ?string $navigationGroup = 'User Management';
+    protected static ?string $navigationGroup = 'Settings';
+    protected static ?int $navigationSort = 4;
+    protected static ?string $navigationLabel = 'User Management';
 
     public static function canViewAny(): bool
     {
@@ -94,6 +96,12 @@ class UserResource extends Resource
                             'sales_top_selling' => 'Top Selling Products',
                             'testimonials' => 'Testimonials (Stories from Clients)',
                             'faqs' => 'FAQs (Frequently Asked Questions)',
+                            'email_templates' => 'Email Templates',
+                            'sms_templates' => 'SMS Templates',
+                            'email_logs' => 'Email Logs',
+                            'sms_logs' => 'SMS Logs',
+                            'notification_logs' => 'Notification Logs (All)',
+                            'odoo_orders' => 'Odoo ERP Sync (Orders)',
                         ])
                         ->columns(2)
                         ->gridDirection('row')

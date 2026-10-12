@@ -21,7 +21,7 @@ class CouponResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-ticket';
 
 
-    protected static ?int $navigationSort = 4;
+    protected static ?int $navigationSort = 5;
 
     protected static ?string $navigationGroup = "Shop";
 
@@ -67,34 +67,24 @@ class CouponResource extends Resource
 
                 Forms\Components\Select::make('type')
                     ->options([
-                        'fixed' => 'Fixed Amount (₹)',
+                        'fixed' => 'Fixed Amount (SAR)',
                         'percent' => 'Percentage (%)',
                     ])
                     ->required()
                     ->live(),
 
                 Forms\Components\TextInput::make('value')
-                    ->label(fn (Forms\Get $get): string => $get('type') === 'percent' ? 'Discount Percentage (%)' : 'Discount Amount (₹)')
+                    ->label(fn (Forms\Get $get): string => $get('type') === 'percent' ? 'Discount Percentage (%)' : 'Discount Amount (SAR)')
                     ->required()
                     ->numeric()
                     ->rules(['min:0']),
 
                 Forms\Components\TextInput::make('max_discount_amount')
-                    ->label('Max Discount Cap (₹)')
-                    ->helperText('Maximum discount limit in ₹ for percentage coupons (optional)')
+                    ->label('Max Discount Cap (SAR)')
+                    ->helperText('Maximum discount limit in SAR for percentage coupons (optional)')
                     ->numeric()
                     ->rules(['min:0'])
                     ->visible(fn (Forms\Get $get): bool => $get('type') === 'percent'),
-
-                Forms\Components\Select::make('payment_method_restriction')
-                    ->label('Payment Method Restriction')
-                    ->options([
-                        'all' => 'All Payment Methods (Online & COD)',
-                        'online_only' => 'Online (Razorpay / Prepaid) Only',
-                        'cod_only' => 'Cash on Delivery (COD) Only',
-                    ])
-                    ->default('all')
-                    ->required(),
 
                 // Category
                 Forms\Components\Select::make('category_id')
@@ -137,13 +127,13 @@ class CouponResource extends Resource
                 Forms\Components\Section::make('Cart Value & Dates')
                     ->schema([
                         Forms\Components\TextInput::make('min_cart_amount')
-                            ->label('Min Cart Amount (₹)')
+                            ->label('Min Cart Amount (SAR)')
                             ->numeric()
                             ->rules(['min:0'])
                             ->placeholder('0'),
 
                         Forms\Components\TextInput::make('max_cart_amount')
-                            ->label('Max Cart Amount (₹)')
+                            ->label('Max Cart Amount (SAR)')
                             ->numeric()
                             ->rules(['min:0'])
                             ->placeholder('Optional'),
@@ -186,27 +176,13 @@ class CouponResource extends Resource
                         if ($record->type === 'percent') {
                             $text = $record->value . '%';
                             if ($record->max_discount_amount) {
-                                $text .= ' (Max ₹' . $record->max_discount_amount . ')';
+                                $text .= ' (Max ' . $record->max_discount_amount . ' SAR)';
                             }
                             return $text;
                         }
-                        return '₹' . number_format((float) $record->value, 2);
+                        return number_format((float) $record->value, 2) . ' SAR';
                     })
                     ->sortable(),
-
-                Tables\Columns\TextColumn::make('payment_method_restriction')
-                    ->label('Payment')
-                    ->badge()
-                    ->colors([
-                        'info' => 'all',
-                        'success' => 'online_only',
-                        'warning' => 'cod_only',
-                    ])
-                    ->formatStateUsing(fn (string $state): string => match ($state) {
-                        'online_only' => 'Online Only',
-                        'cod_only' => 'COD Only',
-                        default => 'All Methods',
-                    }),
 
                 Tables\Columns\TextColumn::make('user_limit')
                     ->label('Per User Limit')
@@ -220,7 +196,7 @@ class CouponResource extends Resource
 
                 Tables\Columns\TextColumn::make('min_cart_amount')
                     ->label('Min Cart')
-                    ->formatStateUsing(fn ($state) => $state ? '₹' . $state : '-')
+                    ->formatStateUsing(fn ($state) => $state ? $state . ' SAR' : '-')
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('valid_to')
@@ -236,7 +212,7 @@ class CouponResource extends Resource
 
                 Tables\Columns\TextColumn::make('total_discount')
                     ->label('Total Discount')
-                    ->getStateUsing(fn (Coupon $record): string => currency_symbol() . ' ' . number_format((float) $record->orders()->sum('discount_amount'), 2))
+                    ->getStateUsing(fn (Coupon $record): string => number_format((float) $record->orders()->sum('discount_amount'), 2) . ' SAR')
                     ->sortable(false),
 
                 Tables\Columns\IconColumn::make('is_active')

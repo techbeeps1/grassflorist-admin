@@ -16,8 +16,8 @@ class DeliveryBlockedDateResource extends Resource
     protected static ?string $model = DeliveryBlockedDate::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-no-symbol';
-    protected static ?string $navigationGroup = 'Shipping';
-    protected static ?int $navigationSort = 4;
+    protected static ?string $navigationGroup = 'Shipping & Delivery';
+    protected static ?int $navigationSort = 3;
     protected static ?string $navigationLabel = 'Blocked Dates & Holidays';
     protected static ?string $modelLabel = 'Blocked Date / Holiday';
     protected static ?string $pluralModelLabel = 'Blocked Dates & Holidays';

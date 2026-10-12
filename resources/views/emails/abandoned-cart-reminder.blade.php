@@ -134,24 +134,23 @@
 </head>
 <body>
     @php
-        // Media Base URL resolution matching order-confirmation.blade.php
-        $appUrl = config('app.url') ?: env('APP_URL');
-        if (empty($appUrl) || str_contains($appUrl, '127.0.0.1') || str_contains($appUrl, 'localhost')) {
-            $mediaBaseUrl = 'https://admin.bookwindow.in';
-        } else {
-            $mediaBaseUrl = rtrim($appUrl, '/');
-        }
+        $mediaBaseUrl = rtrim(config('app.url', 'https://grassflorist.com'), '/');
 
         $customerDisplayName = $cart->getEffectiveCustomerName();
         $totalItems = $cart->getItemsCount();
         $cartTotal = $cart->calculateTotal();
-        $supportEmail = config('app.admin_email') ?: env('ADMIN_EMAIL', 'info@bookwindow.in');
+        $supportEmail = config('app.admin_email') ?: env('ADMIN_EMAIL', 'info@grassflorist.com');
+        $logoPath = public_path('images/grass-logo.webp');
+        $brandLogo = file_exists($logoPath)
+            ? ('data:image/webp;base64,' . base64_encode(file_get_contents($logoPath)))
+            : asset('images/grass-logo.webp');
     @endphp
 
-    <div class="email-container" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; font-family: 'Arial', sans-serif;">
-        <!-- Logo Header (Matches Order Confirmation exactly) -->
-        <div class="header" style="background-color: #f8fafc; padding: 20px; text-align: center; border-bottom: 1px solid #e2e8f0;">
-            <img src="https://admin.bookwindow.in/storage/app/public/logo.png" alt="{{ config('app.name') }}" class="logo" style="max-width: 90px; height: auto; display: block; margin: 0 auto;">
+    <div class="email-container" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; max-width: 600px; margin: 0 auto; border: 1px solid #EFE7DC; font-family: 'Segoe UI', Roboto, sans-serif;">
+        <!-- Logo Header -->
+        <div class="header" style="background-color: #2D3F33; padding: 24px; text-align: center; border-bottom: 3px solid #8fae2a;">
+            <img src="{{ $brandLogo }}" alt="Grass Florist" class="logo" style="max-width: 130px; height: auto; display: block; margin: 0 auto; filter: brightness(0) invert(1);">
+            <div style="color: #C2D4BE; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; margin-top: 6px;">Luxury Floral Atelier</div>
         </div>
         
         <!-- Content -->

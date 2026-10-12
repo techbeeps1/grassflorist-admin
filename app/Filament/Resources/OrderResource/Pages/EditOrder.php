@@ -24,14 +24,7 @@ class EditOrder extends EditRecord
                 ->label('Print Tax Invoice')
                 ->icon('heroicon-o-document-text')
                 ->color('info')
-                ->url(fn () => route('orders.tax_invoice', $this->record->id))
-                ->openUrlInNewTab(),
-
-            Actions\Action::make('downloadPdf')
-                ->label('Download PDF')
-                ->icon('heroicon-o-document-arrow-down')
-                ->color('gray')
-                ->url(fn () => route('orders.pdf', $this->record->id))
+                ->url(fn () => route('orders.tax_invoice', ['id' => $this->record->id, 'key' => $this->record->order_key]))
                 ->openUrlInNewTab(),
         ];
     }

@@ -14,8 +14,8 @@ class PartnerInquiryResource extends Resource
 {
     protected static ?string $model = PartnerInquiry::class;
     protected static ?string $navigationIcon = 'heroicon-o-building-storefront';
-    protected static ?string $navigationGroup = 'Pages';
-    protected static ?int $navigationSort = 4;
+    protected static ?string $navigationGroup = 'Inquiries & Leads';
+    protected static ?int $navigationSort = 3;
     protected static ?string $modelLabel = 'Brand Partner Inquiry';
     protected static ?string $pluralModelLabel = 'Partner With Us';
 

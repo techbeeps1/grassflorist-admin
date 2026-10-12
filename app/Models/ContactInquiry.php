@@ -17,6 +17,7 @@ class ContactInquiry extends Model
         'message',
         'ip_address',
         'status',
+        'admin_notes',
     ];
 
     protected $casts = [

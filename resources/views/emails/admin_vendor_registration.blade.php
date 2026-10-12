@@ -135,12 +135,17 @@
         }
     </style>
 </head>
-<body>
-<div class="container">
-    <div class="header">
-        <img src="https://admin.bookwindow.in/storage/app/public/logo.png" alt="{{ config('app.name') }} Logo">
-        <h1>New Vendor Registration Received</h1>
-        <p>A new seller application has been submitted on BookWindow</p>
+    @php
+        $logoPath = public_path('images/grass-logo.webp');
+        $brandLogo = file_exists($logoPath)
+            ? ('data:image/webp;base64,' . base64_encode(file_get_contents($logoPath)))
+            : asset('images/grass-logo.webp');
+    @endphp
+<div class="container" style="border: 1px solid #EFE7DC; border-radius: 12px; overflow: hidden; background: #ffffff;">
+    <div class="header" style="background-color: #2D3F33; border-bottom: 3px solid #8fae2a; padding: 24px; text-align: center;">
+        <img src="{{ $brandLogo }}" alt="Grass Florist Logo" style="max-width: 130px; height: auto; display: block; margin: 0 auto; filter: brightness(0) invert(1);">
+        <h1 style="color: #ffffff; font-size: 20px; margin-top: 10px;">New Vendor Registration Received</h1>
+        <p style="color: #C2D4BE; font-size: 12px;">A new seller application has been submitted on Grass Florist</p>
     </div>
 
     <div class="content">

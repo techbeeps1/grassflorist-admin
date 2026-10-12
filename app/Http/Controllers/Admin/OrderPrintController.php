@@ -32,9 +32,39 @@ class OrderPrintController extends Controller
     /**
      * Render Saudi Arabia ZATCA-compliant Tax Invoice
      */
-    public function printTaxInvoice($id): View
+    public function printTaxInvoice(Request $request, $id): View
     {
-        $order = Order::with('items')->findOrFail($id);
+        $cleanId = preg_replace('/^OR-/i', '', (string)$id);
+        $order = Order::with('items')
+            ->where('id', $cleanId)
+            ->orWhere('id', $id)
+            ->orWhere('order_number', $id)
+            ->orWhere('order_number', 'OR-' . $cleanId)
+            ->firstOrFail();
+
+        // Ensure order_key exists
+        if (empty($order->order_key)) {
+            $order->order_key = 'wc_order_' . \Illuminate\Support\Str::random(20);
+            $order->saveQuietly();
+        }
+
+        // Security Authorization Check:
+        // 1. Admin/Vendor staff logged into backend
+        $isAdmin = auth()->check() && (
+            (method_exists(auth()->user(), 'isAdmin') && auth()->user()->isAdmin()) ||
+            (method_exists(auth()->user(), 'isVendor') && auth()->user()->isVendor()) ||
+            in_array(auth()->user()->role ?? '', ['admin', 'super_admin', 'staff'])
+        );
+
+        // 2. Customer key verification (like WooCommerce ?key=wc_order_...)
+        if (!$isAdmin) {
+            $providedKey = trim((string)$request->query('key'));
+            $expectedKey = (string)$order->order_key;
+
+            if (empty($providedKey) || !hash_equals($expectedKey, $providedKey)) {
+                abort(403, 'Unauthorized access: Valid order key is required to view this invoice.');
+            }
+        }
 
         return view('prints.tax_invoice', compact('order'));
     }

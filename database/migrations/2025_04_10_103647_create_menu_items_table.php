@@ -27,7 +27,7 @@ return new class extends Migration
             $table->string('wrapper_class')->nullable();
             $table->json('parameters')->nullable();
 
-            $table->foreignIdFor(\Biostate\FilamentMenuBuilder\Models\Menu::class)->constrained()->cascadeOnDelete();
+            $table->foreignId('menu_id')->constrained('menus')->cascadeOnDelete();
 
             $table->nestedSet();
         });

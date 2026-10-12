@@ -15,7 +15,7 @@ class MenuResource extends Resource
 {
     protected static ?string $model = Menu::class;
 
-    protected static ?string $navigationGroup = 'Pages';
+    protected static ?string $navigationGroup = 'Content & Storefront';
 
     protected static ?string $navigationIcon = 'heroicon-o-bars-3-bottom-left';
 
@@ -23,7 +23,7 @@ class MenuResource extends Resource
 
     protected static ?string $modelLabel = 'Navigation Menu';
 
-    protected static ?int $navigationSort = 5;
+    protected static ?int $navigationSort = 2;
 
     public static function canCreate(): bool
     {

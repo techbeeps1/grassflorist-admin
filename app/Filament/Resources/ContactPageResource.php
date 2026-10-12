@@ -13,9 +13,9 @@ use Filament\Tables\Table;
 class ContactPageResource extends Resource
 {
     protected static ?string $model = ContactPage::class;
-    protected static ?string $navigationGroup = 'Pages';
+    protected static ?string $navigationGroup = 'Content & Storefront';
     protected static ?string $navigationIcon = 'heroicon-o-chat-bubble-bottom-center';
-    protected static ?int $navigationSort = 2;
+    protected static ?int $navigationSort = 3;
     protected static ?string $modelLabel = 'Contact Page';
     protected static ?string $pluralModelLabel = 'Contact Pages';
 

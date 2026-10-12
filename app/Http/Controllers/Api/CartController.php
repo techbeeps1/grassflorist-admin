@@ -481,10 +481,15 @@ class CartController extends Controller
             return response()->json([
                 'success' => (bool) $deleted,
                 'message' => $deleted ? 'Item removed' : 'Item not found in cart',
+                'cart' => $this->formatCartResponse($cart),
             ]);
         }
 
-        return response()->json(['success' => false, 'message' => 'Cart not found']);
+        return response()->json([
+            'success' => false,
+            'message' => 'Cart not found',
+            'cart' => ['items' => [], 'items_count' => 0, 'total' => 0],
+        ]);
     }
 
     public function empty(Request $request): JsonResponse
@@ -493,68 +498,85 @@ class CartController extends Controller
 
         if ($cart) {
             $cart->items()->delete();
-            return response()->json(['message' => 'Cart emptied successfully']);
-        }
-
-        return response()->json(['message' => 'Cart not found']);
-    }
-
-    public function cartupdate(Request $request): JsonResponse
-    {
-        $productId = $request->product_id;
-        $quantityChange = (int) $request->quantity_change;
-
-        if (!in_array($quantityChange, [1, -1])) {
             return response()->json([
-                'success' => false,
-                'message' => 'Invalid quantity change value',
-            ]);
-        }
-
-        $cart = $this->resolveCart($request);
-
-        if ($cart) {
-            $cartItem = $cart->items()->where('product_id', $productId)->first();
-
-            if ($cartItem) {
-                $newQuantity = $cartItem->quantity + $quantityChange;
-
-                if ($newQuantity < 1) {
-                    $cart->items()->where('product_id', $productId)->delete();
-                    return response()->json([
-                        'success' => true,
-                        'message' => 'Item removed from cart',
-                        'new_quantity' => 0,
-                    ]);
-                }
-
-                $product = Product::find($productId);
-                $availableStock = (int) ($product->quantity ?? 0);
-                if ($product && $quantityChange > 0 && $newQuantity > $availableStock) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => "Only {$availableStock} unit(s) available in stock",
-                    ], 422);
-                }
-
-                $updated = $cartItem->update(['quantity' => $newQuantity]);
-
-                return response()->json([
-                    'success' => (bool) $updated,
-                    'message' => $updated ? 'Quantity updated' : 'Failed to update quantity',
-                    'new_quantity' => $newQuantity,
-                ]);
-            }
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Item not found in cart',
+                'success' => true,
+                'message' => 'Cart emptied successfully',
+                'cart' => $this->formatCartResponse($cart),
             ]);
         }
 
         return response()->json([
             'success' => false,
             'message' => 'Cart not found',
+            'cart' => ['items' => [], 'items_count' => 0, 'total' => 0],
+        ]);
+    }
+
+    public function cartupdate(Request $request): JsonResponse
+    {
+        $productId = $request->product_id;
+
+        $cart = $this->resolveCart($request);
+        if (!$cart) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cart not found',
+            ], 404);
+        }
+
+        $cartItem = $cart->items()->where('product_id', $productId)->first();
+        if (!$cartItem) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Item not found in cart',
+                'cart' => $this->formatCartResponse($cart),
+            ], 404);
+        }
+
+        // Determine target new quantity: either explicit 'quantity' or delta 'quantity_change'
+        if ($request->has('quantity')) {
+            $newQuantity = (int) $request->quantity;
+        } elseif ($request->has('quantity_change')) {
+            $newQuantity = $cartItem->quantity + (int) $request->quantity_change;
+        } else {
+            return response()->json([
+                'success' => false,
+                'message' => 'Either quantity or quantity_change is required',
+            ], 422);
+        }
+
+        // If target quantity is 0 or less, remove item from cart
+        if ($newQuantity <= 0) {
+            $cart->items()->where('product_id', $productId)->delete();
+            return response()->json([
+                'success' => true,
+                'message' => 'Item removed from cart',
+                'new_quantity' => 0,
+                'cart' => $this->formatCartResponse($cart),
+            ]);
+        }
+
+        // Validate available stock in real-time
+        $product = Product::find($productId);
+        $availableStock = (int) ($product->quantity ?? 0);
+        if ($product && $availableStock > 0 && $newQuantity > $availableStock) {
+            // Keep at available stock limit
+            $cartItem->update(['quantity' => $availableStock]);
+            return response()->json([
+                'success' => false,
+                'message' => "Only {$availableStock} unit(s) available in stock",
+                'new_quantity' => $availableStock,
+                'cart' => $this->formatCartResponse($cart),
+            ], 422);
+        }
+
+        $updated = $cartItem->update(['quantity' => $newQuantity]);
+
+        return response()->json([
+            'success' => (bool) $updated,
+            'message' => $updated ? 'Quantity updated' : 'Failed to update quantity',
+            'new_quantity' => $newQuantity,
+            'cart' => $this->formatCartResponse($cart),
         ]);
     }
 

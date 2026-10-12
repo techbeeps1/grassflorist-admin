@@ -14,9 +14,32 @@ class Order extends Model
     //
     use HasFactory, SoftDeletes;
 
+    protected static function booted()
+    {
+        static::creating(function ($order) {
+            if (empty($order->order_key)) {
+                $order->order_key = 'wc_order_' . \Illuminate\Support\Str::random(20);
+            }
+        });
+    }
+
+    public function getOrderKeyAttribute($value)
+    {
+        if (!empty($value)) {
+            return $value;
+        }
+        $key = 'wc_order_' . \Illuminate\Support\Str::random(20);
+        if ($this->exists) {
+            $this->attributes['order_key'] = $key;
+            $this->saveQuietly();
+        }
+        return $key;
+    }
+
     protected $fillable = [
         'source_id',
         'order_number',
+        'order_key',
         'email',
         'first_name',
         'last_name',
@@ -68,12 +91,18 @@ class Order extends Model
         'date_paid',
         'ordered_at',
         'meta_data',
+        'odoo_sync_status',
+        'odoo_synced_at',
+        'odoo_invoice_pdf_path',
+        'odoo_invoice_pdf_url',
+        'odoo_error',
     ];
 
     protected $casts = [
         'delivery_date' => 'date',
         'date_paid' => 'datetime',
         'ordered_at' => 'datetime',
+        'odoo_synced_at' => 'datetime',
         'meta_data' => 'array',
         'subtotal' => 'decimal:2',
         'discount_amount' => 'decimal:2',
@@ -82,11 +111,16 @@ class Order extends Model
         'delivery_amount' => 'decimal:2',
         'total_amount' => 'decimal:2',
     ];
+
+    public function isPaid(): bool
+    {
+        return in_array(strtolower((string)$this->payment_status), ['paid', 'completed']);
+    }
     
 
     public function customer(): BelongsTo
     {
-        return $this->belongsTo(related: Customer::class);
+        return $this->belongsTo(Customer::class, 'user_id');
     }
     public function customername()
     {
@@ -97,6 +131,22 @@ class Order extends Model
     {
         return $this->hasMany(Cart::class, 'recovered_order_id');
     }
+
+    public function activities(): HasMany
+    {
+        return $this->hasMany(OrderActivity::class)->orderBy('id', 'desc');
+    }
+
+    public function notifications(): HasMany
+    {
+        return $this->hasMany(NotificationLog::class)->orderBy('id', 'desc');
+    }
+
+    public function odooSyncLogs(): HasMany
+    {
+        return $this->hasMany(OdooSyncLog::class)->orderBy('id', 'desc');
+    }
+
     public function items(): HasMany
     {
         return $this->hasMany(related: OrderItem::class);

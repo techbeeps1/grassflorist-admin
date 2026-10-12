@@ -18,7 +18,10 @@ class PaymentManager
     {
         $code = strtolower(trim($code));
 
-        if (str_starts_with($code, 'hyperpay') || in_array($code, ['mada', 'applepay', 'stcpay'])) {
+        if (
+            str_starts_with($code, 'hyperpay') ||
+            in_array($code, ['mada', 'applepay', 'apple_pay', 'stcpay', 'stc_pay', 'credit_card', 'creditcard', 'card', 'visa', 'mastercard'])
+        ) {
             return new HyperPayService();
         }
 
@@ -30,6 +33,10 @@ class PaymentManager
             return new TamaraService();
         }
 
+        if (str_starts_with($code, 'paypal')) {
+            return new PayPalService();
+        }
+
         return null;
     }
 
@@ -38,19 +45,31 @@ class PaymentManager
      */
     public static function markOrderAsPaid(Order $order, string $transactionId, ?string $gateway = null, array $rawPayload = [], string $source = 'WEBHOOK'): bool
     {
-        if ($order->payment_status === 'paid' && $order->status === 'processing') {
-            return true; // Already processed
-        }
-
         try {
             DB::transaction(function () use ($order, $transactionId, $gateway, $rawPayload, $source) {
                 $order->payment_status = 'paid';
                 $order->date_paid = now();
-                if ($order->status === 'pending') {
+                if (in_array($order->status, ['pending', 'pending_payment', 'payment_pending'])) {
                     $order->status = 'processing';
                 }
                 if (!empty($transactionId)) {
                     $order->razorpay_payment_id = $transactionId; // Transaction Ref
+                }
+                if (!empty($gateway)) {
+                    $order->payment_method = strtolower($gateway);
+                }
+                if (strtolower((string)$order->payment_method) === 'paypal') {
+                    $order->currency = 'USD';
+                    $rate = (float)($order->exchange_rate ?: 0.2667);
+                    $sarTotal = (float)($order->sar_amount ?: $order->total_amount);
+                    
+                    // If currency_amount is missing, 0, or equals the unconverted SAR total, calculate true USD
+                    if (!$order->currency_amount || (float)$order->currency_amount <= 0 || (float)$order->currency_amount >= $sarTotal) {
+                        $order->currency_amount = round($sarTotal * $rate, 2);
+                    }
+                    if (!$order->sar_amount || (float)$order->sar_amount <= 0) {
+                        $order->sar_amount = $sarTotal;
+                    }
                 }
                 $order->save();
 
@@ -68,9 +87,6 @@ class PaymentManager
                 ]);
             });
 
-            // Send Confirmation Email
-            self::sendOrderConfirmationEmail($order);
-
             return true;
         } catch (\Exception $e) {
             Log::error("Failed to mark order #{$order->id} as paid: " . $e->getMessage());
@@ -84,36 +100,11 @@ class PaymentManager
     public static function sendOrderConfirmationEmail(Order $order): void
     {
         try {
-            $template = EmailTemplate::where('event_key', 'order_confirmed')
-                ->where('is_active', true)
-                ->first();
-
-            if (!$template || empty($order->email)) {
-                return;
-            }
-
-            $lang = $order->order_language ?? 'ar';
-
-            $data = [
-                'customer_name' => trim(($order->first_name ?? '') . ' ' . ($order->last_name ?? '')),
-                'order_id' => $order->order_number ?? (string)$order->id,
-                'total_amount' => number_format((float)$order->total_amount, 2) . ' SAR',
-                'payment_method' => strtoupper((string)$order->payment_method),
-                'delivery_date' => $order->delivery_date ?? date('Y-m-d'),
-                'delivery_time' => $order->delivery_time ?? 'Standard Delivery',
-                'recipient_name' => $order->recipient_name ?? $order->first_name ?? 'Recipient',
-                'recipient_phone' => $order->recipient_phone ?? '',
-                'gift_message' => $order->delivery_message ?? 'N/A',
-            ];
-
-            $rendered = $template->render($data, $lang);
-
-            Mail::html($rendered['body'], function ($message) use ($order, $rendered) {
-                $message->to($order->email)
-                    ->subject($rendered['subject']);
-            });
-        } catch (\Exception $e) {
-            Log::warning("Order confirmation email failed for #{$order->id}: " . $e->getMessage());
+            /** @var \App\Services\Notifications\NotificationService $notificationService */
+            $notificationService = app(\App\Services\Notifications\NotificationService::class);
+            $notificationService->sendOrderNotification($order, 'order_confirmed');
+        } catch (\Throwable $e) {
+            Log::error("Order confirmation notification failed for #{$order->id}: " . $e->getMessage());
         }
     }
 }

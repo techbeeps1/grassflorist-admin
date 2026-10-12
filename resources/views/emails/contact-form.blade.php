@@ -95,8 +95,15 @@
     </style>
 </head>
 <body>
+    @php
+        $logoPath = public_path('images/grass-logo.webp');
+        $brandLogo = file_exists($logoPath)
+            ? ('data:image/webp;base64,' . base64_encode(file_get_contents($logoPath)))
+            : asset('images/grass-logo.webp');
+    @endphp
     <div class="container">
         <div class="header">
+            <img src="{{ $brandLogo }}" alt="Grass Florist" style="max-width: 130px; height: auto; display: block; margin: 0 auto 10px auto; filter: brightness(0) invert(1);">
             <h1>GRASS FLORIST</h1>
             <p>Customer Concierge Inquiry</p>
         </div>

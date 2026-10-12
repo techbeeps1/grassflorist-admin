@@ -40,30 +40,34 @@ class SetApiLocale
         }
 
         // 2. API / Storefront Requests
-        if (
-            $request->is('api/en*') ||
-            $request->is('en/*') ||
-            $request->segment(1) === 'en' ||
-            $request->segment(2) === 'en' ||
-            $request->query('lang') === 'en' ||
-            $request->header('X-Locale') === 'en'
-        ) {
-            $locale = 'en';
-        } elseif (
-            $request->is('api/ar*') ||
-            $request->is('ar/*') ||
-            $request->segment(1) === 'ar' ||
-            $request->segment(2) === 'ar' ||
-            $request->query('lang') === 'ar' ||
-            $request->header('X-Locale') === 'ar'
-        ) {
-            $locale = 'ar';
-        } else {
-            // Default for all Grass Florist storefront requests is Arabic ('ar')
-            $locale = 'ar';
+        $detected = $request->header('X-Locale')
+            ?: ($request->input('locale')
+            ?: ($request->input('order_language')
+            ?: ($request->input('lang')
+            ?: ($request->query('locale')
+            ?: ($request->query('lang'))))));
+
+        if (!$detected) {
+            if (
+                $request->is('api/en*') ||
+                $request->is('en/*') ||
+                $request->segment(1) === 'en' ||
+                $request->segment(2) === 'en'
+            ) {
+                $detected = 'en';
+            } elseif (
+                $request->is('api/ar*') ||
+                $request->is('ar/*') ||
+                $request->segment(1) === 'ar' ||
+                $request->segment(2) === 'ar'
+            ) {
+                $detected = 'ar';
+            } else {
+                $detected = $this->detectAcceptLanguage($request);
+            }
         }
 
-        $locale = strtolower(substr((string) $locale, 0, 2));
+        $locale = strtolower(substr((string) ($detected ?: 'ar'), 0, 2));
 
         if (! in_array($locale, $this->supportedLocales)) {
             $locale = 'ar';

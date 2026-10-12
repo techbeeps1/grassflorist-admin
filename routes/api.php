@@ -42,6 +42,7 @@ Route::get('/publication/{slug}', [PublicationController::class, 'productsBySlug
 Route::get('/search', [ProductSearchController::class, 'search']);
 Route::get('/navigation', [MenuController::class, 'getNavigation']);
 Route::get('menus/{menuName}', [MenuController::class, 'getMenuItems']);
+Route::get('/shipping-methods', [\App\Http\Controllers\Api\ShippingMethodController::class, 'index']);
 
 
 //Debug for session
@@ -49,6 +50,10 @@ Route::get('/debug', [DebugController::class, 'index'])->middleware('web');
 
 //Forgot Password
 Route::post('/forgot-password', [ForgotPasswordController::class, 'sendResetLinkEmail']);
+
+//Newsletter Subscription
+Route::post('/newsletter/subscribe', [\App\Http\Controllers\Api\NewsletterController::class, 'subscribe']);
+Route::post('/newsletter', [\App\Http\Controllers\Api\NewsletterController::class, 'subscribe']);
 
 //Cart & Checkout
 
@@ -79,17 +84,22 @@ Route::post('/razorpay/cancel', [CheckoutController::class, 'handlePaymentCancel
 Route::get('orders/{order_number}', [OrderApiController::class, 'show']);
 
 Route::prefix('my-account')->group(function () {
+    // ⚡ Unprotected refresh endpoint: allows exchanging expired access_token within refresh_ttl
+    Route::post('/refresh', [AuthController::class, 'refresh']);
+    Route::post('/verify-email', [AuthController::class, 'verifyEmail']);
+    Route::get('/verify-email', [AuthController::class, 'verifyEmail']);
+    Route::post('/send-verification-email', [AuthController::class, 'sendVerificationEmail']);
 
-Route::middleware('auth:customer')->group(function () { 
-Route::post('/passwordchange', [AuthController::class, 'passwordchange']);
+    Route::middleware('auth:customer')->group(function () { 
+        Route::post('/passwordchange', [AuthController::class, 'passwordchange']);
 
-Route::get('user_order/{user_id}', [OrderApiController::class, 'userOrders']);
-Route::post('/cancel-order', [OrderApiController::class, 'cancelOrder']);
-Route::post('/logout', [AuthController::class, 'logout']);
-Route::get('/user', [AuthController::class, 'user']);
-Route::post('/refresh', [AuthController::class, 'refresh']);
-Route::get('/view-address/{user_id}', [AuthController::class, 'viewAddress']);
-Route::get('/checkauth', [AuthController::class, 'checkAuth']);
+        Route::get('user_order/{user_id?}', [OrderApiController::class, 'userOrders']);
+        Route::get('orders', [OrderApiController::class, 'userOrders']);
+        Route::post('/cancel-order', [OrderApiController::class, 'cancelOrder']);
+        Route::post('/logout', [AuthController::class, 'logout']);
+        Route::get('/user', [AuthController::class, 'user']);
+        Route::get('/view-address/{user_id}', [AuthController::class, 'viewAddress']);
+        Route::get('/checkauth', [AuthController::class, 'checkAuth']);
 
 Route::post('/add-wishlist',[WishlistController::class,'store']);
 Route::get('/view-wishlist',[WishlistController::class,'index']);
@@ -206,6 +216,7 @@ Route::post('/vendor-register', [VendorRegistrationController::class, 'register'
 
 // 💳 Saudi Payment Gateways & Delivery Slots APIs (Next.js Frontend Integration)
 Route::prefix('v1')->group(function () {
+    Route::get('/shipping-methods', [\App\Http\Controllers\Api\ShippingMethodController::class, 'index']);
     Route::get('/payment-methods', [\App\Http\Controllers\Api\StorefrontPaymentController::class, 'getPaymentMethods']);
     Route::get('/delivery-slots', [\App\Http\Controllers\Api\StorefrontPaymentController::class, 'getDeliverySlots']);
     Route::get('/delivery-slots/blocked-dates', [\App\Http\Controllers\Api\StorefrontPaymentController::class, 'getBlockedDeliveryDates']);
@@ -227,5 +238,6 @@ Route::prefix('v1')->group(function () {
         Route::post('/hyperpay', [\App\Http\Controllers\Api\PaymentWebhookController::class, 'handleHyperPay']);
         Route::post('/tabby', [\App\Http\Controllers\Api\PaymentWebhookController::class, 'handleTabby']);
         Route::post('/tamara', [\App\Http\Controllers\Api\PaymentWebhookController::class, 'handleTamara']);
+        Route::post('/paypal', [\App\Http\Controllers\Api\PaymentWebhookController::class, 'handlePayPal']);
     });
 });

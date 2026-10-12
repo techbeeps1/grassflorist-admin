@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Welcome to BookWindow - Vendor Application Received</title>
+    <title>Welcome to Grass Florist - Vendor Application Received</title>
     <style>
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
@@ -151,12 +151,17 @@
         }
     </style>
 </head>
-<body>
-<div class="container">
-    <div class="header">
-        <img src="https://admin.bookwindow.in/storage/app/public/logo.png" alt="{{ config('app.name') }} Logo">
-        <h1>Welcome to BookWindow!</h1>
-        <p>Thank you for choosing to partner with us as a Seller</p>
+    @php
+        $logoPath = public_path('images/grass-logo.webp');
+        $brandLogo = file_exists($logoPath)
+            ? ('data:image/webp;base64,' . base64_encode(file_get_contents($logoPath)))
+            : asset('images/grass-logo.webp');
+    @endphp
+<div class="container" style="border: 1px solid #EFE7DC; border-radius: 12px; overflow: hidden; background: #ffffff;">
+    <div class="header" style="background-color: #2D3F33; border-bottom: 3px solid #8fae2a; padding: 24px; text-align: center;">
+        <img src="{{ $brandLogo }}" alt="Grass Florist Logo" style="max-width: 130px; height: auto; display: block; margin: 0 auto; filter: brightness(0) invert(1);">
+        <h1 style="color: #ffffff; font-size: 20px; margin-top: 10px;">Welcome to Grass Florist!</h1>
+        <p style="color: #C2D4BE; font-size: 12px;">Thank you for choosing to partner with us as a Merchant</p>
     </div>
 
     <div class="content">
@@ -196,31 +201,31 @@
             <ol class="steps-list">
                 <li><strong>Profile & KYC Verification:</strong> Our onboarding team will verify your submitted business details (PAN, GSTIN, and Bank Information) within <strong>24 to 48 business hours</strong>.</li>
                 <li><strong>Account Approval:</strong> Once approved, you will receive an account activation notification and will be able to log in to the Seller Portal.</li>
-                <li><strong>Start Selling:</strong> Easily list your book inventory, manage stock, and begin receiving orders directly from BookWindow readers.</li>
+                <li><strong>Start Selling:</strong> Easily list your inventory, manage stock, and begin receiving orders directly from Grass Florist customers.</li>
             </ol>
         </div>
 
         <div class="support-box">
             <strong>Need assistance or have questions?</strong><br>
             Our seller support team is always here to help. Feel free to contact us at 
-            <a href="mailto:info@bookwindow.in" style="color: #0284c7; font-weight: 600;">info@bookwindow.in</a>.
+            <a href="mailto:info@grassflorist.com" style="color: #8fae2a; font-weight: 600;">info@grassflorist.com</a>.
         </div>
 
         <div class="btn-container">
-            <a href="{{ config('app.frontend_url', 'https://bookwindow.in') }}" class="btn">Visit BookWindow</a>
+            <a href="{{ config('app.frontend_url', 'https://grassflorist.com') }}" class="btn">Visit Grass Florist</a>
         </div>
 
         <p style="font-size: 13px; color: #64748b; margin-top: 24px;">
             Best regards,<br>
-            <strong>The BookWindow Seller Operations Team</strong>
+            <strong>The Grass Florist Operations Team</strong>
         </p>
     </div>
 
     <div class="footer">
         <p>&copy; {{ date('Y') }} {{ config('app.name') }}. All rights reserved.</p>
         <p>
-            <a href="{{ config('app.frontend_url', 'https://bookwindow.in') }}/privacy">Privacy Policy</a> | 
-            <a href="{{ config('app.frontend_url', 'https://bookwindow.in') }}/terms">Terms & Conditions</a>
+            <a href="{{ config('app.frontend_url', 'https://grassflorist.com') }}/privacy">Privacy Policy</a> | 
+            <a href="{{ config('app.frontend_url', 'https://grassflorist.com') }}/terms">Terms & Conditions</a>
         </p>
         <p style="color: #94a3b8; font-size: 11px;">
             You received this email because an application for a vendor account was submitted using this email address.

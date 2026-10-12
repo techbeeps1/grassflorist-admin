@@ -38,18 +38,17 @@ class AdminPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Emerald,
             ])
-             ->plugins([
-            \Biostate\FilamentMenuBuilder\FilamentMenuBuilderPlugin::make(),
-        ])
             ->font(family:'Poppins')
             ->navigationGroups([
-                NavigationGroup::make('Blog'),
-                NavigationGroup::make('Pages'),
                 NavigationGroup::make('Shop'),
-                NavigationGroup::make('Shipping'),
-                NavigationGroup::make('User Management'),
+                NavigationGroup::make('Catalog'),
+                NavigationGroup::make('Blog'),
+                NavigationGroup::make('Inquiries & Leads'),
+                NavigationGroup::make('Shipping & Delivery'),
+                NavigationGroup::make('Content & Storefront'),
+                NavigationGroup::make('Communications'),
+                NavigationGroup::make('Logs'),
                 NavigationGroup::make('Reports'),
-                NavigationGroup::make('Payment Logs'),
                 NavigationGroup::make('Settings'),
             ])
             ->renderHook(

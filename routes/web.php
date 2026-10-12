@@ -41,6 +41,8 @@ Route::get('/orders/{id}/gift-card', [\App\Http\Controllers\Admin\OrderPrintCont
     ->name('orders.gift_card');
 Route::get('/orders/{id}/tax-invoice', [\App\Http\Controllers\Admin\OrderPrintController::class, 'printTaxInvoice'])
     ->name('orders.tax_invoice');
+Route::get('/orders/{id}/invoice', [\App\Http\Controllers\Admin\OrderPrintController::class, 'printTaxInvoice'])
+    ->name('orders.invoice');
 
 // 📜 Swagger API Documentation UI (OpenAPI 3.1)
 Route::get('/docs/swagger', function () {
@@ -62,5 +64,24 @@ Route::get('/admin/google-reviews/sample-template', function () {
  // Route::get('/api/products/{slug}', [ProductController::class, 'show']);
  // Route::get('/api/categories/{slug}/products', [ProductController::class, 'productsByCategorySlug']);
  // Route::get('/api/publications', [PublicationController::class, 'index']);
+
+// 💳 Storefront Payment Gateway Callback Redirects (forward from Laravel port 8000 to Next.js Frontend)
+Route::get('/checkout/success', function (\Illuminate\Http\Request $request) {
+    $frontendUrl = env('FRONTEND_URL', 'http://localhost:3000');
+    if (app()->environment('local') && !str_contains($frontendUrl, 'localhost')) {
+        $frontendUrl = 'http://localhost:3000';
+    }
+    $query = $request->getQueryString();
+    return redirect("{$frontendUrl}/en/checkout?" . ($query ?: 'payment_success=1'));
+});
+
+Route::get('/checkout', function (\Illuminate\Http\Request $request) {
+    $frontendUrl = env('FRONTEND_URL', 'http://localhost:3000');
+    if (app()->environment('local') && !str_contains($frontendUrl, 'localhost')) {
+        $frontendUrl = 'http://localhost:3000';
+    }
+    $query = $request->getQueryString();
+    return redirect("{$frontendUrl}/en/checkout" . ($query ? "?{$query}" : ''));
+});
 
 require __DIR__.'/auth.php';

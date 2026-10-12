@@ -11,6 +11,7 @@ use App\Models\OrderItem;
 use App\Models\ShippingMethod;
 use App\Models\User;
 use App\Models\Customer;
+use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
@@ -33,11 +34,13 @@ class CheckoutController extends Controller
         try {
 
         $sessionId = $request->session_id;
-        DB::table('sessions')->upsert([
-            'id' => $sessionId,
-            'payload' => $sessionId,
-            'last_activity' => 0
-        ], ['id'], ['payload', 'last_activity']);
+        if (!empty($sessionId)) {
+            DB::table('sessions')->upsert([
+                'id' => $sessionId,
+                'payload' => $sessionId,
+                'last_activity' => 0
+            ], ['id'], ['payload', 'last_activity']);
+        }
 
         $request->validate([
             'session_id' => 'sometimes|string|nullable',
@@ -61,8 +64,44 @@ class CheckoutController extends Controller
         // Get cart based on user or provided session ID
         $cart = $this->getCart($request);
         
+        if (!$cart && !empty($request->session_id)) {
+            $cart = Cart::firstOrCreate(
+                ['session_id' => $request->session_id],
+                ['user_id' => Auth::id() ?: null]
+            );
+        }
+
         if (!$cart) {
             return response()->json(['message' => 'Cart not found'], 404);
+        }
+
+        // Synchronize cart items with submitted checkout items to prevent stale items
+        if ($request->has('items') && is_array($request->items) && count($request->items) > 0) {
+            $submittedProductIds = collect($request->items)->pluck('product_id')->filter()->map(fn($id) => (int)$id)->all();
+            if (!empty($submittedProductIds)) {
+                CartItem::where('cart_id', $cart->id)
+                    ->whereNotIn('product_id', $submittedProductIds)
+                    ->delete();
+
+                foreach ($request->items as $reqItem) {
+                    $pid = (int)($reqItem['product_id'] ?? 0);
+                    $qty = max(1, (int)($reqItem['quantity'] ?? 1));
+                    if ($pid > 0) {
+                        $p = Product::find($pid);
+                        if ($p) {
+                            CartItem::updateOrCreate(
+                                ['cart_id' => $cart->id, 'product_id' => $pid],
+                                [
+                                    'quantity' => $qty,
+                                    'price' => (float)$p->price,
+                                    'image' => is_array($p->image) ? reset($p->image) : ($p->image ?: ''),
+                                    'product_weight' => $p->weight ?: '0',
+                                ]
+                            );
+                        }
+                    }
+                }
+            }
         }
 
         $cartItems = CartItem::with(['product' => function($query) {
@@ -76,9 +115,10 @@ class CheckoutController extends Controller
         // Validate stock for each item in cart
         foreach ($cartItems as $item) {
             $product = $item->product;
+            $prodName = $this->getProductName($product);
             if (!$product || !$product->is_visible) {
                 return response()->json([
-                    'message' => "The product '{$item->product_name}' is currently unavailable. Please remove it from your cart to proceed.",
+                    'message' => "The product '{$prodName}' is currently unavailable. Please remove it from your cart to proceed.",
                     'error' => 'Product unavailable',
                     'out_of_stock_product_id' => $item->product_id
                 ], 422);
@@ -87,7 +127,7 @@ class CheckoutController extends Controller
             $availableStock = (int) ($product->quantity ?? 0);
             if ($availableStock <= 0) {
                 return response()->json([
-                    'message' => "Sorry, '{$product->name}' is currently out of stock. Please remove it from your cart to proceed.",
+                    'message' => "Sorry, '{$prodName}' is currently out of stock. Please remove it from your cart to proceed.",
                     'error' => 'Product out of stock',
                     'out_of_stock_product_id' => $item->product_id
                 ], 422);
@@ -95,7 +135,7 @@ class CheckoutController extends Controller
 
             if ($item->quantity > $availableStock) {
                 return response()->json([
-                    'message' => "Sorry, only {$availableStock} unit(s) available for '{$product->name}'. Please update your cart quantity to proceed.",
+                    'message' => "Sorry, only {$availableStock} unit(s) available for '{$prodName}'. Please update your cart quantity to proceed.",
                     'error' => 'Insufficient stock',
                     'out_of_stock_product_id' => $item->product_id
                 ], 422);
@@ -128,31 +168,49 @@ class CheckoutController extends Controller
             }
         }
             
-         // Process shipping
-        $shippingMethod = ShippingMethod::where('code', $request->shipping_method)->firstOrFail();
+        // Process shipping
+        $shippingMethod = ShippingMethod::where('code', $request->shipping_method)->first()
+            ?? ShippingMethod::where('is_active', true)->first()
+            ?? new ShippingMethod(['name' => 'Delivery Inside Jeddah', 'code' => 'inside_jeddah', 'price' => 30.00]);
 
-        $shippingAmount = $shippingMethod->price;
+        $shippingAmount = $request->has('shipping_amount')
+            ? (float)$request->shipping_amount
+            : (float)($shippingMethod->price ?? 30.00);
 
-        if($shippingAmount>0)
-        {
+        $globalSetting = \App\Models\GlobalSetting::current();
+        $isVatIncluded = (bool)($globalSetting->is_vat_included ?? false);
+        $vatRate = (float)($globalSetting->vat_percentage ?? 15.00);
 
-            $baseCost = 49;
-            
-            $totalItems = $cart->items() ->selectRaw('SUM(quantity) as total_items')->value('total_items');
-            $shippingAmount = $shippingAmount * $totalItems;
+        $discountAmount = (float)($request->discount_amount ?? 0);
+        $discountedSubtotal = max(0, $subtotal - $discountAmount);
 
+        if ($isVatIncluded) {
+            // Prices already include VAT (Inclusive)
+            $taxAmount = round($discountedSubtotal - ($discountedSubtotal / (1 + ($vatRate / 100))), 2);
+            $totalAmount = round($discountedSubtotal + $shippingAmount, 2);
+        } else {
+            // VAT is EXCLUDED (Exclusive - Default): 15% VAT is calculated and added on top of subtotal!
+            $taxAmount = round($discountedSubtotal * ($vatRate / 100), 2);
+            $totalAmount = round($discountedSubtotal + $taxAmount + $shippingAmount, 2);
         }
-        $discountAmount = $request->discount_amount ?? 0;
-        $totalAmount = $subtotal + $shippingAmount - $discountAmount;
-        $user = $this->getOrCreateUser($request, $dbPhone);
 
-        $order = Order::with('items')
-        ->latest()
-        ->firstOrFail();
+        $user = $this->getOrCreateUser($request, $dbPhone);
 
 
 
         
+         // Determine order language
+        $rawOrderLanguage = $request->input('order_language')
+            ?: ($request->input('locale')
+            ?: ($request->input('lang')
+            ?: ($request->header('X-Locale')
+            ?: ($request->query('locale')
+            ?: ($request->query('lang')
+            ?: (app()->getLocale() ?: 'ar'))))));
+        $orderLanguage = in_array(strtolower(substr((string)$rawOrderLanguage, 0, 2)), ['en', 'ar'], true)
+            ? strtolower(substr((string)$rawOrderLanguage, 0, 2))
+            : 'ar';
+
          //Check payemnt method
         if ($request->payment_method === 'razorpay') {
         
@@ -166,14 +224,15 @@ class CheckoutController extends Controller
             'total_amount' => $totalAmount,
             'payment_method' => $request->payment_method,
             'payment_status' => 'payment_pending',
+            'order_language' => $orderLanguage,
             'address_2' => $request->address2,
-            'shipping_method' => $shippingMethod->name,
+            'shipping_method' => format_translatable($shippingMethod->name) ?: 'Delivery Inside Jeddah',
             'address' => $request->address,
             'coupon_code' => $request->coupon_code,
             'status' => 'payment_pending',
             'customer_phone'=> $dbPhone,
             'first_name'=> $request->first_name,
-            'last_name'=> $request->last_name,
+            'last_name'=> $request->last_name ?: '',
             'zip_code' => $request->zip_code,
             'city' => $request->city,
             'district' => $request->district,
@@ -192,19 +251,34 @@ class CheckoutController extends Controller
 
         $product_price = $this->calculateProductPriceWithCoupon($item, $request->coupon_code, $subtotal);
                 
+            $prod = $item->product;
+            $prodName = $this->getProductName($prod);
+            $prodImage = $prod ? $prod->image : null;
+            if (is_array($prodImage)) {
+                $prodImage = reset($prodImage);
+            }
+            $prodWeight = $prod ? $prod->weight : null;
+            if (is_array($prodWeight)) {
+                $prodWeight = reset($prodWeight);
+            }
+            $vendorId = $prod ? $prod->vendor_id : null;
+            if (is_array($vendorId)) {
+                $vendorId = reset($vendorId);
+            }
+
             DB::table('order_items')->insert([
-            'order_id' => $order->id,
-            'product_id' => $item->product_id,
-            'product_name' => $item->product->name,
-            'product_image' => $item->product->image,
-            'price' => $product_price,
-            'quantity' => $item->quantity,
-            'product_weight' => $item->product->weight,
-            'total' => $product_price * $item->quantity,
-            'payment_method'=> $request->payment_method,
-            'vendor_id' =>$item->product->vendor_id,
-            'created_at' => now(),  // recommended to add timestamps if your table has them
-            'updated_at' => now(),
+                'order_id' => $order->id,
+                'product_id' => $item->product_id,
+                'product_name' => $prodName,
+                'product_image' => is_string($prodImage) ? $prodImage : '',
+                'price' => $product_price,
+                'quantity' => $item->quantity,
+                'product_weight' => $prodWeight !== null ? (string)$prodWeight : null,
+                'total' => $product_price * $item->quantity,
+                'payment_method'=> $request->payment_method,
+                'vendor_id' => $vendorId,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
 
         }
@@ -254,27 +328,88 @@ class CheckoutController extends Controller
             $deliveryMessage = $request->card_message ?: $request->delivery_message;
             $songLink = $request->song_link;
 
-            $vatRate = (float)(\App\Models\GlobalSetting::current()->vat_percentage ?? 15.00);
-            $taxAmount = round(max(0, $subtotal - $discountAmount) * ($vatRate / 100), 2);
+            $paymentMethod = strtolower(trim((string)($request->payment_method ?: 'mada')));
+            $isCod = in_array($paymentMethod, ['cod', 'cash_on_delivery']);
+            $isPaypal = ($paymentMethod === 'paypal');
 
-            $currency = strtoupper($request->currency ?: 'SAR');
-            $globalSetting = \App\Models\GlobalSetting::current();
-            $exchangeRate = $currency === 'USD' ? (float)($request->exchange_rate ?: $globalSetting->sar_to_usd_rate ?: 0.2667) : 1.0;
-            $sarAmount = $totalAmount;
-            $currencyAmount = $currency === 'USD' ? round($totalAmount * $exchangeRate, 2) : $totalAmount;
+            $sarToUsdRate = (float)($globalSetting->sar_to_usd_rate ?: 0.2667);
+            $exchangeRate = (float)($request->exchange_rate ?: $sarToUsdRate);
+            if ($exchangeRate <= 0) {
+                $exchangeRate = 0.2667;
+            }
+
+            // Only lock currency to USD if customer explicitly selected USD on the storefront
+            $currency = (strtoupper((string)$request->currency) === 'USD') ? 'USD' : 'SAR';
+            $sarAmount = (float)$totalAmount;
+            $usdAmount = round($sarAmount * $exchangeRate, 2);
+            $currencyAmount = ($currency === 'USD') ? $usdAmount : $sarAmount;
 
             $metaData = is_array($request->meta_data) ? $request->meta_data : [];
+            if ($request->filled('sender_name_on_card')) {
+                $metaData['sender_name_on_card'] = $request->sender_name_on_card;
+            }
+            if ($deliveryMessage) {
+                $metaData['card_message'] = $deliveryMessage;
+            }
+            if ($songLink) {
+                $metaData['song_link'] = $songLink;
+            }
             $metaData['currency'] = $currency;
             $metaData['exchange_rate'] = $exchangeRate;
             $metaData['sar_total'] = $sarAmount;
+            $metaData['usd_total'] = $usdAmount;
             $metaData['currency_total'] = $currencyAmount;
-            $metaData['sar_subtotal'] = $subtotal;
-            if ($currency === 'USD') {
-                $metaData['usd_total'] = $currencyAmount;
-                $metaData['usd_subtotal'] = round($subtotal * $exchangeRate, 2);
+            $metaData['sar_subtotal'] = (float)$subtotal;
+            $metaData['usd_subtotal'] = round((float)$subtotal * $exchangeRate, 2);
+
+            // 🛑 1. If order was ALREADY PAID, do NOT create a new order or attempt payment again!
+            $alreadyPaidOrder = null;
+            if (!empty($request->order_number)) {
+                $alreadyPaidOrder = Order::where('order_number', $request->order_number)
+                    ->whereIn('payment_status', ['paid', 'completed'])
+                    ->first();
+            }
+            if (!$alreadyPaidOrder && !empty($request->session_id)) {
+                $alreadyPaidOrder = Order::where('session_id', $request->session_id)
+                    ->whereIn('payment_status', ['paid', 'completed'])
+                    ->where('created_at', '>=', now()->subHours(24))
+                    ->latest('id')
+                    ->first();
             }
 
-            $order = Order::create([
+            if ($alreadyPaidOrder) {
+                return response()->json([
+                    'message' => 'Order has already been paid successfully',
+                    'already_paid' => true,
+                    'order' => $alreadyPaidOrder->fresh(['items']),
+                    'order_number' => $alreadyPaidOrder->order_number,
+                    'requires_payment' => false,
+                    'payment_status' => 'paid',
+                ]);
+            }
+
+            // 🔁 2. Order Re-use Rules:
+            // - User payment page se back aaya / 1 hr baad retry / payment fail retry: REUSE pending order
+            // - User ne quantity badli / items add-remove / address badla: UPDATE items & address on SAME order ID
+            // - Order cancel ya expire (> 24 hr) ho gaya: CREATE NEW ORDER (do not reuse)
+            $existingOrder = null;
+            if (!empty($request->order_number)) {
+                $existingOrder = Order::where('order_number', $request->order_number)
+                    ->whereIn('payment_status', ['pending', 'payment_pending', 'failed'])
+                    ->whereNotIn('status', ['cancelled', 'completed', 'refunded', 'expired'])
+                    ->where('created_at', '>=', now()->subHours(24))
+                    ->first();
+            }
+            if (!$existingOrder && !empty($request->session_id)) {
+                $existingOrder = Order::where('session_id', $request->session_id)
+                    ->whereIn('payment_status', ['pending', 'payment_pending', 'failed'])
+                    ->whereNotIn('status', ['cancelled', 'completed', 'refunded', 'expired'])
+                    ->where('created_at', '>=', now()->subHours(24))
+                    ->latest('id')
+                    ->first();
+            }
+
+            $orderData = [
                 'session_id' => $request->session_id,
                 'email' => $request->email ?: 'customer@grassflorist.com',
                 'user_id' => $user ? $user->id : (auth('customer')->id() ?? null),
@@ -288,16 +423,16 @@ class CheckoutController extends Controller
                 'currency_amount' => $currencyAmount,
                 'sar_amount' => $sarAmount,
                 'meta_data' => $metaData,
-                'payment_method' => $request->payment_method ?: 'mada',
+                'payment_method' => $paymentMethod,
                 'payment_status' => 'pending',
                 'address' => $request->address,
                 'address_2' => $request->address_2 ?: $request->address2,
-                'shipping_method' => $shippingMethod->name ?? 'Flat Rate',
+                'shipping_method' => format_translatable($shippingMethod->name) ?: 'Delivery Inside Jeddah',
                 'coupon_code' => $request->coupon_code,
-                'status' => 'pending',
+                'status' => $isCod ? 'processing' : 'pending_payment',
                 'customer_phone' => $dbPhone,
                 'first_name' => $request->first_name,
-                'last_name' => $request->last_name,
+                'last_name' => $request->last_name ?: '',
                 'sender_name' => $senderName,
                 'recipient_name' => $recipientName,
                 'recipient_phone' => $recipientPhone,
@@ -311,42 +446,69 @@ class CheckoutController extends Controller
                 'district' => $request->district,
                 'state' => 'Makkah',
                 'country' => 'Saudi Arabia',
+                'order_language' => $orderLanguage,
                 'delivery_amount' => $request->delivery_amount ?: 0,
-            ]);
+            ];
 
-            $order->update([
-            'order_number' => 'OR-' . $order->id,
-            ]);
-       
-            
+            if ($existingOrder) {
+                // Update existing order without changing order ID or order number
+                $existingOrder->update($orderData);
+                $order = $existingOrder;
+                // Delete old items to refresh with current cart items and updated totals
+                DB::table('order_items')->where('order_id', $order->id)->delete();
+            } else {
+                $order = Order::create($orderData);
+                $order->update([
+                    'order_number' => 'OR-' . $order->id,
+                ]);
+            }
+
             foreach ($cartItems as $item) {
-
                 $product_price = $this->calculateProductPriceWithCoupon($item, $request->coupon_code, $subtotal);
                 
+                $prod = $item->product;
+                $prodName = $this->getProductName($prod);
+                $prodImage = $prod ? $prod->image : null;
+                if (is_array($prodImage)) {
+                    $prodImage = reset($prodImage);
+                }
+                $prodWeight = $prod ? $prod->weight : null;
+                if (is_array($prodWeight)) {
+                    $prodWeight = reset($prodWeight);
+                }
+                $vendorId = $prod ? $prod->vendor_id : null;
+                if (is_array($vendorId)) {
+                    $vendorId = reset($vendorId);
+                }
+
                 DB::table('order_items')->insert([
                     'order_id' => $order->id,
                     'product_id' => $item->product_id,
-                    'product_name' => $item->product->name,
-                    'product_image' => $item->product->image,
+                    'product_name' => $prodName,
+                    'product_image' => is_string($prodImage) ? $prodImage : '',
                     'price' => $product_price,
                     'quantity' => $item->quantity,
-                    'product_weight' => $item->product->weight,
+                    'product_weight' => $prodWeight !== null ? (string)$prodWeight : null,
                     'total' => $product_price * $item->quantity,
-                    'payment_method' => $request->payment_method,
-                    'vendor_id' => $item->product->vendor_id,
+                    'payment_method' => $paymentMethod,
+                    'vendor_id' => is_numeric($vendorId) ? (int)$vendorId : null,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
             }
 
-            // Clear cart only for non-Razorpay payments
-            $this->clearCartAndSendEmails($cart, $order, $request);
+            // Only clear cart and send confirmation email immediately if Cash on Delivery (COD)
+            // For online gateways (HyperPay, Tabby, Tamara, PayPal), cart is preserved until payment is verified!
+            if ($isCod) {
+                $this->clearCartAndSendEmails($cart, $order, $request);
+            }
 
             return response()->json([
-            'message' => 'Order placed successfully',
-            'order' => $order,
-            'order_number' => $order->order_number,
-       
+                'message' => $isCod ? 'Order placed successfully' : 'Order session ready for payment',
+                'order' => $order,
+                'order_number' => $order->order_number,
+                'requires_payment' => !$isCod,
+                'payment_method' => $paymentMethod,
             ]);
         }
     }
@@ -407,17 +569,16 @@ class CheckoutController extends Controller
     protected function sendOrderEmails(Order $order, $request)
     {
         try {
-            $customerEmail = $order->email ?? ($request ? $request->email : null);
-            // 1. Send confirmation email to customer
-            if ($customerEmail) {
-                Mail::to($customerEmail)->send(new OrderConfirmation($order));
-            }
+            /** @var \App\Services\Notifications\NotificationService $notificationService */
+            $notificationService = app(\App\Services\Notifications\NotificationService::class);
+            $notificationService->sendOrderNotification($order, 'order_confirmed');
+        } catch (\Throwable $e) {
+            \Log::error("NotificationService order_confirmed error for #{$order->id}: " . $e->getMessage());
+        }
 
-            // 2. Send notification to admin
-            $adminEmail = env('ADMIN_EMAIL');
-            if ($adminEmail) {
-                Mail::to($adminEmail)->send(new AdminOrderNotification($order));
-            }
+        try {
+
+
 
             // 3. Send notification to each vendor who has items in this order
             $order->loadMissing(['items.product', 'items.vendor.user']);
@@ -498,24 +659,10 @@ class CheckoutController extends Controller
 
         // 2. Minimum / Maximum Cart Amount
         if (!empty($coupon->min_cart_amount) && $subtotal > 0 && $subtotal < (float)$coupon->min_cart_amount) {
-            return 'Minimum cart amount should be ₹' . number_format((float)$coupon->min_cart_amount, 2) . ' to apply this coupon.';
+            return 'Minimum cart amount should be ' . number_format((float)$coupon->min_cart_amount, 2) . ' SAR to apply this coupon.';
         }
         if (!empty($coupon->max_cart_amount) && $subtotal > 0 && $subtotal > (float)$coupon->max_cart_amount) {
-            return 'Maximum cart amount should be ₹' . number_format((float)$coupon->max_cart_amount, 2) . ' for this coupon.';
-        }
-
-        // 3. Payment Method Restriction
-        $paymentMethod = $request->payment_method ?? null;
-        if (!empty($coupon->payment_method_restriction) && $coupon->payment_method_restriction !== 'all' && !empty($paymentMethod)) {
-            $isOnline = in_array(strtolower($paymentMethod), ['razorpay', 'online', 'prepaid']);
-            $isCod = in_array(strtolower($paymentMethod), ['cod', 'cash_on_delivery']);
-
-            if ($coupon->payment_method_restriction === 'online_only' && !$isOnline) {
-                return 'This coupon is valid only on Online / Prepaid payments.';
-            }
-            if ($coupon->payment_method_restriction === 'cod_only' && !$isCod) {
-                return 'This coupon is valid only on Cash on Delivery (COD) orders.';
-            }
+            return 'Maximum cart amount should be ' . number_format((float)$coupon->max_cart_amount, 2) . ' SAR for this coupon.';
         }
 
         // 4. Overall Usage Limit
@@ -529,7 +676,13 @@ class CheckoutController extends Controller
         }
 
         // Customer details for user-specific checks
-        $email = $request->email ? trim(strtolower($request->email)) : null;
+        $rawEmail = $request->email 
+            ?: ($request->customer_email 
+            ?: ($request->input('billing_address.email') 
+            ?: ($request->input('customer.email') 
+            ?: (auth('api')->user()?->email 
+            ?: (auth()->user()?->email ?: null)))));
+        $email = $rawEmail ? trim(strtolower((string)$rawEmail)) : null;
         $phone = $request->phone ? preg_replace('/\D/', '', (string)$request->phone) : null;
         if ($phone && strlen($phone) > 10) {
             $phone = substr($phone, -10);
@@ -592,6 +745,25 @@ class CheckoutController extends Controller
                         ? 'You have already used this coupon on a previous order.'
                         : "You have reached the maximum allowed usage ({$userLimit} times) for this coupon.";
                 }
+            }
+        }
+
+        // 7. Newsletter Subscriber Only Check (e.g. SAVE10 / WELCOME10)
+        if (in_array(strtoupper(trim((string)$coupon->code)), ['SAVE10', 'WELCOME10'], true)) {
+            $isAr = $request->header('X-Locale') === 'ar' || $request->input('locale') === 'ar' || app()->getLocale() === 'ar';
+            if (!$email) {
+                return $isAr
+                    ? 'يرجى إدخال البريد الإلكتروني في تفاصيل الطلب للتحقق من أهلية كود المشتركين.'
+                    : 'Please provide your email address in order details to verify subscriber discount eligibility.';
+            }
+
+            $isSubscribed = \App\Models\NewsletterSubscriber::where('email', $email)
+                ->where('status', 'active')
+                ->exists();
+            if (!$isSubscribed) {
+                return $isAr
+                    ? 'هذا الكوبون مخصص حصرياً للمشتركين في النادي البريدي. يرجى الاشتراك أولاً للاستفادة من الخصم.'
+                    : 'This coupon is valid exclusively for newsletter subscribers. Please subscribe first to claim your 10% discount.';
             }
         }
 
@@ -1019,5 +1191,31 @@ class CheckoutController extends Controller
         } else {
             return Cart::where('session_id', $order->session_id)->first();
         }
-    }    
+    }
+
+    protected function getProductName($product): string
+    {
+        if (!$product) {
+            return 'Product';
+        }
+
+        $name = $product->name;
+        if (is_array($name)) {
+            $locale = app()->getLocale();
+            $val = $name[$locale] ?? $name['en'] ?? $name['ar'] ?? reset($name) ?? 'Product';
+            return is_string($val) ? $val : (string)json_encode($val);
+        }
+
+        if (is_string($name)) {
+            $decoded = json_decode($name, true);
+            if (is_array($decoded)) {
+                $locale = app()->getLocale();
+                $val = $decoded[$locale] ?? $decoded['en'] ?? $decoded['ar'] ?? reset($decoded) ?? 'Product';
+                return is_string($val) ? $val : (string)json_encode($val);
+            }
+            return $name;
+        }
+
+        return 'Product';
+    }
 }

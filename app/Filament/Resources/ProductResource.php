@@ -27,7 +27,8 @@ use Illuminate\Support\Str;
 class ProductResource extends Resource
 {
     protected static ?string $model = Product::class;
-    protected static ?string $navigationGroup = "Shop";
+    protected static ?string $navigationGroup = "Catalog";
+    protected static ?int $navigationSort = 1;
     protected static ?string $navigationIcon = 'heroicon-o-shopping-bag';
     protected static ?string $navigationLabel = 'Products';
 

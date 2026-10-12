@@ -17,7 +17,7 @@ class VendorProfileResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-building-storefront';
     protected static ?string $navigationLabel = 'Store Profile';
     protected static ?string $navigationGroup = 'Settings';
-    protected static ?int $navigationSort = 1;
+    protected static ?int $navigationSort = 3;
     protected static ?string $slug = 'vendor-profile';
 
     public static function canViewAny(): bool

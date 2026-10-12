@@ -107,25 +107,23 @@ class PartnerWithUsController extends Controller
 
             $rendered = $template->render($shortcodes, $locale);
 
-            // Determine recipient emails configured in admin template
-            $recipientSetting = $template->notification_emails ?: config('mail.from.address', 'info@grassflorist.com');
-            $recipients = array_values(array_filter(array_map('trim', explode(',', $recipientSetting))));
-            if (empty($recipients)) {
-                $recipients = ['info@grassflorist.com'];
-            }
-
-            // A. Send notification email to Admin recipients
-            try {
-                Mail::html($rendered['body'], function ($mail) use ($recipients, $rendered, $partner, $fullName) {
-                    $mail->to($recipients)
-                        ->replyTo($partner->email, $fullName)
-                        ->subject($rendered['subject']);
-                });
-            } catch (\Throwable $e) {
-                Log::error('[PartnerWithUs] Failed to dispatch admin notification email: ' . $e->getMessage(), [
-                    'partner_id' => $partner->id,
-                    'recipients' => $recipients,
-                ]);
+            // A. Send notification email to Admin recipients ONLY if configured in the template
+            if (!empty(trim((string)$template->notification_emails))) {
+                $recipients = array_values(array_filter(array_map('trim', explode(',', $template->notification_emails))));
+                if (!empty($recipients)) {
+                    try {
+                        Mail::html($rendered['body'], function ($mail) use ($recipients, $rendered, $partner, $fullName) {
+                            $mail->to($recipients)
+                                ->replyTo($partner->email, $fullName)
+                                ->subject($rendered['subject']);
+                        });
+                    } catch (\Throwable $e) {
+                        Log::error('[PartnerWithUs] Failed to dispatch admin notification email: ' . $e->getMessage(), [
+                            'partner_id' => $partner->id,
+                            'recipients' => $recipients,
+                        ]);
+                    }
+                }
             }
 
             // B. If recipient_type is 'both', also send acknowledgment email to Brand

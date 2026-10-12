@@ -39,7 +39,7 @@ class OrderResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-shopping-bag';
 
-    protected static ?int $navigationSort = 3;
+    protected static ?int $navigationSort = 1;
 
     protected static ?string $navigationGroup = "Shop";
 
@@ -105,7 +105,9 @@ class OrderResource extends Resource
                 // Use Tabs for organization
                 Tabs::make('Order Details')
                     ->tabs([
-                        Tab::make('Customer & Order Info')
+                        // 1. Customer & Shipping Tab
+                        Tab::make('Customer & Shipping')
+                            ->icon('heroicon-o-user')
                             ->schema([
                                 // Customer Information Section
                                 Section::make('Customer Information')
@@ -161,57 +163,6 @@ class OrderResource extends Resource
                                                 TextInput::make('country')
                                                     ->label('Country')
                                                     ->default('Saudi Arabia'),
-                                            ]),
-                                    ]),
-
-                                // Florist & Gift Delivery Section
-                                Section::make('Florist & Gift Delivery Details')
-                                    ->schema([
-                                        Grid::make(3)
-                                            ->schema([
-                                                TextInput::make('recipient_name')
-                                                    ->label('Recipient Name')
-                                                    ->placeholder('e.g. Sara Al-Otaibi'),
-
-                                                TextInput::make('recipient_phone')
-                                                    ->label('Recipient Phone')
-                                                    ->tel()
-                                                    ->placeholder('e.g. +966 50 123 4567'),
-
-                                                TextInput::make('sender_name')
-                                                    ->label('Sender Name on Card')
-                                                    ->placeholder('e.g. Mohammed'),
-
-                                                Forms\Components\DatePicker::make('delivery_date')
-                                                    ->label('Delivery Date')
-                                                    ->prefixIcon('heroicon-o-calendar'),
-
-                                                TextInput::make('delivery_time')
-                                                    ->label('Delivery Time / Slot')
-                                                    ->placeholder('e.g. 04:00 PM - 08:00 PM'),
-
-                                                TextInput::make('order_language')
-                                                    ->label('Language')
-                                                    ->placeholder('en / ar')
-                                                    ->maxLength(10),
-
-                                                Textarea::make('delivery_message')
-                                                    ->label('Gift Card Message')
-                                                    ->placeholder('Message written by sender on the gift card...')
-                                                    ->rows(3)
-                                                    ->columnSpanFull(),
-
-                                                TextInput::make('song_link')
-                                                    ->label('Spotify / Audio Song Link')
-                                                    ->prefixIcon('heroicon-o-musical-note')
-                                                    ->url()
-                                                    ->columnSpan(2),
-
-                                                TextInput::make('source_id')
-                                                    ->label('WooCommerce Order ID')
-                                                    ->disabled()
-                                                    ->dehydrated(false)
-                                                    ->visible(fn (?Order $record) => filled($record?->source_id)),
 
                                                 TextInput::make('location_link')
                                                     ->label('Google Maps / Location Link')
@@ -219,9 +170,13 @@ class OrderResource extends Resource
                                                     ->columnSpanFull(),
                                             ]),
                                     ]),
+                            ]),
 
-                                // Order Information Section
-                                Section::make('Order Information')
+                        // 2. Order Status Tab
+                        Tab::make('Order Status')
+                            ->icon('heroicon-o-clipboard-document-check')
+                            ->schema([
+                                Section::make('Order Status & Tracking')
                                     ->schema([
                                         Grid::make(2)
                                             ->schema([
@@ -235,20 +190,27 @@ class OrderResource extends Resource
                                                     ->label('Order Status')
                                                     ->options([
                                                         "pending_payment" => "Pending payment",
-                                                        "pending" => "Pending (Legacy)",
                                                         "processing" => "Processing",
                                                         "printed" => "Printed",
                                                         "shipped" => "Shipped",
-                                                        "order_shipped" => "Shipped (Legacy)",
                                                         "delivered" => "Delivered",
                                                         "completed" => "Completed",
                                                         "cancelled" => "Cancelled",
                                                         "refunded" => "Refunded",
                                                         "failed" => "Failed",
-                                                        "declined" => "Declined (Legacy)",
                                                     ])
                                                     ->required()
                                                     ->live()
+                                                    ->native(false),
+
+                                                Select::make('order_language')
+                                                    ->label('Order Language (لغة إشعارات الطلب)')
+                                                    ->options([
+                                                        'ar' => 'العربية (Arabic)',
+                                                        'en' => 'English (الإنجليزية)',
+                                                    ])
+                                                    ->default('ar')
+                                                    ->helperText('Language used for customer emails and SMS updates for this order.')
                                                     ->native(false),
 
                                                 Placeholder::make('cancelled_by_display')
@@ -303,19 +265,68 @@ class OrderResource extends Resource
                                                     ->placeholder('e.g. INV/2026/92811/183')
                                                     ->maxLength(100),
 
+                                                TextInput::make('courier_partner')
+                                                    ->label('Courier Partner Name')
+                                                    ->placeholder('Enter Courier Partner Name (e.g. SMSA, Aramex, DTDC)')
+                                                    ->live()
+                                                    ->visible(fn (Forms\Get $get) => in_array($get('status'), ['order_shipped', 'shipped', 'delivered', 'completed'])),
+
                                                 TextInput::make('tracking_id')
                                                     ->label('Tracking ID')
                                                     ->placeholder('e.g. DTDC12345678, EK123456789IN')
                                                     ->live()
                                                     ->visible(fn (Forms\Get $get) => in_array($get('status'), ['order_shipped', 'shipped', 'delivered', 'completed']))
                                                     ->required(fn (Forms\Get $get) => in_array($get('status'), ['order_shipped', 'shipped'])),
+                                            ]),
+                                    ]),
 
-                                                TextInput::make('courier_partner')
-                                                    ->label('Courier Partner Name')
-                                                    ->placeholder('Enter Courier Partner Name (e.g. SMSA, Aramex, DTDC)')
-                                                    ->live()
-                                                    ->visible(fn (Forms\Get $get) => in_array($get('status'), ['order_shipped', 'shipped', 'delivered', 'completed'])),
+                                // Admin Remarks & Internal Comments Section
+                                Section::make('Admin Remarks & Internal Comments')
+                                    ->description('Internal staff comments and order remarks (not visible to customer).')
+                                    ->schema([
+                                        Textarea::make('admin_remark')
+                                            ->label('Order Remark / Comment')
+                                            ->placeholder('Add internal staff notes or comments about this order...')
+                                            ->rows(3)
+                                            ->columnSpanFull(),
+                                    ]),
+
+                                // Additional Information
+                                Section::make('Additional Information')
+                                    ->schema([
+                                        Grid::make(2)
+                                            ->schema([
+                                                Placeholder::make('shipping_method')
+                                                    ->label('Shipping Method')
+                                                    ->content(function ($record) {
+                                                        return $record->shipping_method ?? 'N/A';
+                                                    }),
                                                 
+                                                Placeholder::make('coupon_code')
+                                                    ->label('Coupon Code')
+                                                    ->content(function ($record) {
+                                                        return $record->coupon_code ?? 'N/A';
+                                                    }),
+                                                
+                                                Placeholder::make('notes')
+                                                    ->label('Order Notes (Customer)')
+                                                    ->content(function ($record) {
+                                                        return $record->notes ?? 'No notes';
+                                                    })
+                                                    ->columnSpanFull(),
+                                            ]),
+                                    ]),
+                            ]),
+
+                        // 3. Payment & Financials Tab
+                        Tab::make('Payment & Financials')
+                            ->icon('heroicon-o-credit-card')
+                            ->schema([
+                                // Payment Details Section
+                                Section::make('Payment Details')
+                                    ->schema([
+                                        Grid::make(2)
+                                            ->schema([
                                                 Placeholder::make('payment_method')
                                                     ->label('Payment Method')
                                                     ->content(function ($record) {
@@ -329,20 +340,12 @@ class OrderResource extends Resource
                                                             "cod" => "Cash on Delivery",
                                                             "card" => "Credit Card",
                                                             "razorpay" => "Razorpay",
+                                                            "paypal" => "PayPal",
                                                         ];
                                                         $raw = strtolower((string)($record?->payment_method ?? ''));
                                                         return $methods[$raw] ?? ($record?->payment_method ?? 'N/A');
                                                     }),
 
-                                                Placeholder::make('payment_info_summary')
-                                                    ->label('Payment Timestamp & IP')
-                                                    ->content(function ($record) {
-                                                        if (!$record) return '-';
-                                                        $datePaid = $record->date_paid ? $record->date_paid->format('d M Y, h:i A') : 'Not Recorded';
-                                                        $ip = $record->customer_ip ? " | IP: {$record->customer_ip}" : '';
-                                                        return "Paid: {$datePaid}{$ip}";
-                                                    }),
-                                                
                                                 Select::make('payment_status')
                                                     ->label('Payment Status')
                                                     ->options([
@@ -353,14 +356,23 @@ class OrderResource extends Resource
                                                     ])
                                                     ->required()
                                                     ->native(false),
-                                                
+
+                                                Placeholder::make('payment_info_summary')
+                                                    ->label('Payment Timestamp & IP')
+                                                    ->content(function ($record) {
+                                                        if (!$record) return '-';
+                                                        $datePaid = $record->date_paid ? $record->date_paid->format('d M Y, h:i A') : 'Not Recorded';
+                                                        $ip = $record->customer_ip ? " | IP: {$record->customer_ip}" : '';
+                                                        return "Paid: {$datePaid}{$ip}";
+                                                    }),
+
                                                 Placeholder::make('razorpay_order_id')
                                                     ->label('Gateway Reference / Order ID')
                                                     ->content(function ($record) {
                                                         return $record->razorpay_order_id ?? $record->order_number ?? 'N/A';
                                                     })
                                                     ->visible(fn ($record) => $record && ($record->razorpay_order_id || $record->order_number)),
-                                                
+
                                                 Placeholder::make('razorpay_payment_id')
                                                     ->label('Transaction / Payment ID')
                                                     ->content(function ($record) {
@@ -370,58 +382,7 @@ class OrderResource extends Resource
                                             ]),
                                     ]),
 
-                                // PDF Document Barcodes & ZATCA Invoice Box
-                                Section::make('PDF Document Barcodes & ZATCA Invoice')
-                                    ->description('Official Saudi E-Invoicing QR Code & Quick Print Actions')
-                                    ->schema([
-                                        Placeholder::make('zatca_qr_preview')
-                                            ->label('ZATCA E-Invoice QR Code Preview')
-                                            ->content(function ($record) {
-                                                if (!$record) return '-';
-                                                $settings = \App\Models\GlobalSetting::current();
-                                                $sellerName = 'مؤسسة غراس السعودية';
-                                                $trn = $settings->vat_registration_number ?: '300553485900003';
-                                                $total = (float)$record->total_amount;
-                                                $tax = (float)($record->tax_amount ?? ($record->subtotal * 0.15));
-                                                
-                                                $qrUrl = zatca_qr_image_url(
-                                                    sellerName: $sellerName,
-                                                    trn: $trn,
-                                                    timestamp: $record->created_at ?? now(),
-                                                    totalAmount: $total,
-                                                    vatAmount: $tax,
-                                                    size: 140
-                                                );
-
-                                                $taxInvoiceUrl = route('orders.tax_invoice', $record->id);
-                                                $giftCardUrl = route('orders.gift_card', $record->id);
-
-                                                return new \Illuminate\Support\HtmlString('
-                                                    <div class="flex flex-wrap items-center justify-between gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                                                        <div class="flex items-center gap-4">
-                                                            <img src="' . $qrUrl . '" alt="ZATCA E-Invoice QR" class="w-24 h-24 border border-gray-300 dark:border-gray-600 rounded bg-white p-1" />
-                                                            <div class="space-y-1 text-xs text-gray-600 dark:text-gray-300">
-                                                                <p class="font-bold text-sm text-gray-900 dark:text-gray-100">ZATCA Compliant QR Code (Phase 1 TLV)</p>
-                                                                <p>Seller: <span class="font-semibold">' . e($sellerName) . '</span></p>
-                                                                <p>Tax Registration (TRN): <span class="font-mono font-semibold">' . e($trn) . '</span></p>
-                                                                <p>Invoice Total: <span class="font-semibold">' . format_currency($total, 2) . '</span> (incl. ' . format_currency($tax, 2) . ' 15% VAT)</p>
-                                                            </div>
-                                                        </div>
-                                                        <div class="flex flex-wrap gap-2">
-                                                            <a href="' . $taxInvoiceUrl . '" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white rounded-md text-xs font-semibold hover:bg-emerald-700 transition shadow-sm">
-                                                                Print Tax Invoice
-                                                            </a>
-                                                            <a href="' . $giftCardUrl . '" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-2 bg-gray-800 text-white rounded-md text-xs font-semibold hover:bg-gray-900 transition shadow-sm">
-                                                                Print Florist Gift Card
-                                                            </a>
-                                                        </div>
-                                                    </div>
-                                                ');
-                                            })
-                                            ->columnSpanFull(),
-                                    ]),
-
-                                // Order Financial Details - Show as view only
+                                // Financial Details Section
                                 Section::make('Financial Details')
                                     ->visible(fn () => auth()->user()?->isAdmin() ?? false)
                                     ->schema([
@@ -440,7 +401,7 @@ class OrderResource extends Resource
                                                     }),
                                                 
                                                 Placeholder::make('tax_amount')
-                                                    ->label('Tax')
+                                                    ->label('Tax (15% VAT)')
                                                     ->content(function ($record) {
                                                         return format_currency($record->tax_amount ?? 0, 2);
                                                     }),
@@ -469,11 +430,12 @@ class OrderResource extends Resource
                                                     ->content(function ($record) {
                                                         if (!$record) return 'SAR';
                                                         $curr = strtoupper($record->currency ?: 'SAR');
-                                                        if ($curr === 'USD') {
-                                                            $usdAmount = $record->currency_amount ? number_format((float)$record->currency_amount, 2) : 'N/A';
+                                                        $isPaypal = strtolower((string)($record->payment_method ?? '')) === 'paypal';
+                                                        if ($curr === 'USD' || $isPaypal) {
+                                                            $rate = (float)($record->exchange_rate ?: 0.2667);
+                                                            $usdAmount = $record->currency_amount ? number_format((float)$record->currency_amount, 2) : number_format((float)$record->total_amount * $rate, 2);
                                                             $sarAmount = $record->sar_amount ? number_format((float)$record->sar_amount, 2) : number_format((float)$record->total_amount, 2);
-                                                            $rate = $record->exchange_rate ? number_format((float)$record->exchange_rate, 4) : 'N/A';
-                                                            return "Paid in USD: \${$usdAmount} | Base: {$sarAmount} SAR (Rate: 1 SAR = {$rate} USD)";
+                                                            return "Paid in USD: \${$usdAmount} | Base: {$sarAmount} SAR (Locked Rate: 1 SAR = " . number_format($rate, 4) . " USD)";
                                                         }
                                                         return "Paid in SAR: " . format_currency($record->sar_amount ?: $record->total_amount, 2);
                                                     })
@@ -481,45 +443,117 @@ class OrderResource extends Resource
                                             ]),
                                     ]),
 
-                                // Additional Information - Show as view only
-                                Section::make('Additional Information')
+                                // PDF Document Barcodes & ZATCA Invoice Box
+                                Section::make('PDF Document Barcodes & ZATCA Invoice')
+                                    ->description('Official Saudi E-Invoicing QR Code & Quick Print Actions')
                                     ->schema([
-                                        Grid::make(2)
-                                            ->schema([
-                                                Placeholder::make('shipping_method')
-                                                    ->label('Shipping Method')
-                                                    ->content(function ($record) {
-                                                        return $record->shipping_method ?? 'N/A';
-                                                    }),
+                                        Placeholder::make('zatca_qr_preview')
+                                            ->label('ZATCA E-Invoice QR Code Preview')
+                                            ->content(function ($record) {
+                                                if (!$record) return '-';
+                                                $settings = \App\Models\GlobalSetting::current();
+                                                $sellerName = 'مؤسسة غراس السعودية';
+                                                $trn = $settings->vat_registration_number ?: '300553485900003';
+                                                $total = (float)$record->total_amount;
+                                                $tax = (float)($record->tax_amount ?? ($record->subtotal * 0.15));
                                                 
-                                                Placeholder::make('coupon_code')
-                                                    ->label('Coupon Code')
-                                                    ->content(function ($record) {
-                                                        return $record->coupon_code ?? 'N/A';
-                                                    }),
-                                                
-                                                Placeholder::make('notes')
-                                                    ->label('Order Notes (Customer)')
-                                                    ->content(function ($record) {
-                                                        return $record->notes ?? 'No notes';
-                                                    })
-                                                    ->columnSpanFull(),
-                                            ]),
-                                    ]),
+                                                $qrUrl = zatca_qr_image_url(
+                                                    sellerName: $sellerName,
+                                                    trn: $trn,
+                                                    timestamp: $record->created_at ?? now(),
+                                                    totalAmount: $total,
+                                                    vatAmount: $tax,
+                                                    size: 140
+                                                );
 
-                                // Admin Remarks & Internal Comments Section
-                                Section::make('Admin Remarks & Internal Comments')
-                                    ->description('Internal staff comments and order remarks (not visible to customer).')
-                                    ->schema([
-                                        Textarea::make('admin_remark')
-                                            ->label('Order Remark / Comment')
-                                            ->placeholder('Add internal staff notes or comments about this order...')
-                                            ->rows(3)
+                                                $taxInvoiceUrl = route('orders.tax_invoice', ['id' => $record->id, 'key' => $record->order_key]);
+                                                $giftCardUrl = route('orders.gift_card', $record->id);
+
+                                                return new \Illuminate\Support\HtmlString('
+                                                    <div class="flex flex-wrap items-center justify-between gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                                                        <div class="flex items-center gap-4">
+                                                            <img src="' . $qrUrl . '" alt="ZATCA E-Invoice QR" class="w-24 h-24 border border-gray-300 dark:border-gray-600 rounded bg-white p-1" />
+                                                            <div class="space-y-1 text-xs text-gray-600 dark:text-gray-300">
+                                                                <p class="font-bold text-sm text-gray-900 dark:text-gray-100">ZATCA Compliant QR Code (Phase 1 TLV)</p>
+                                                                <p>Seller: <span class="font-semibold">' . e($sellerName) . '</span></p>
+                                                                <p>Tax Registration (TRN): <span class="font-mono font-semibold">' . e($trn) . '</span></p>
+                                                                <p>Invoice Total: <span class="font-semibold">' . format_currency($total, 2) . '</span> (incl. ' . format_currency($tax, 2) . ' 15% VAT)</p>
+                                                            </div>
+                                                        </div>
+                                                        <div class="flex flex-wrap gap-2">
+                                                            <a href="' . $taxInvoiceUrl . '" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white rounded-md text-xs font-semibold hover:bg-emerald-700 transition shadow-sm">
+                                                                Print Tax Invoice
+                                                            </a>
+                                                            <a href="' . $giftCardUrl . '" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-2 bg-gray-800 text-white rounded-md text-xs font-semibold hover:bg-gray-900 transition shadow-sm">
+                                                                Print Florist Gift Card
+                                                            </a>
+                                                        </div>
+                                                    </div>
+                                                ');
+                                            })
                                             ->columnSpanFull(),
                                     ]),
                             ]),
+
+                        // 4. Gift & Delivery Details Tab
+                        Tab::make('Gift & Delivery Details')
+                            ->icon('heroicon-o-gift')
+                            ->schema([
+                                Section::make('Florist & Gift Delivery Details')
+                                    ->schema([
+                                        Grid::make(3)
+                                            ->schema([
+                                                TextInput::make('recipient_name')
+                                                    ->label('Recipient Name')
+                                                    ->placeholder('e.g. Sara Al-Otaibi'),
+
+                                                TextInput::make('recipient_phone')
+                                                    ->label('Recipient Phone')
+                                                    ->tel()
+                                                    ->placeholder('e.g. +966 50 123 4567'),
+
+                                                TextInput::make('sender_name')
+                                                    ->label('Sender Name on Card')
+                                                    ->placeholder('e.g. Mohammed'),
+
+                                                Forms\Components\DatePicker::make('delivery_date')
+                                                    ->label('Delivery Date')
+                                                    ->prefixIcon('heroicon-o-calendar'),
+
+                                                TextInput::make('delivery_time')
+                                                    ->label('Delivery Time / Slot')
+                                                    ->placeholder('e.g. 04:00 PM - 08:00 PM'),
+
+                                                TextInput::make('order_language')
+                                                    ->label('Language')
+                                                    ->placeholder('en / ar')
+                                                    ->maxLength(10),
+
+                                                Textarea::make('delivery_message')
+                                                    ->label('Gift Card Message')
+                                                    ->placeholder('Message written by sender on the gift card...')
+                                                    ->rows(3)
+                                                    ->columnSpanFull(),
+
+                                                TextInput::make('song_link')
+                                                    ->label('Spotify / Audio Song Link')
+                                                    ->prefixIcon('heroicon-o-musical-note')
+                                                    ->url()
+                                                    ->columnSpan(2),
+
+                                                TextInput::make('source_id')
+                                                    ->label('WooCommerce Order ID')
+                                                    ->disabled()
+                                                    ->dehydrated(false)
+                                                    ->visible(fn (?Order $record) => filled($record?->source_id)),
+                                            ]),
+                                    ]),
+                            ]),
                         
+                        // 5. Products / Items Tab
                         Tab::make('Products / Items')
+                            ->icon('heroicon-o-shopping-bag')
+                            ->badge(fn (?Order $record) => $record?->items?->count())
                             ->schema([
                                 Section::make('Order Items')
                                     ->schema([
@@ -542,19 +576,165 @@ class OrderResource extends Resource
                                                     return '<div class="text-center text-gray-500 py-8">No products belonging to your store found in this order.</div>';
                                                 }
 
-                                                $html = '<div class="bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow-sm border border-gray-200 dark:border-gray-700">
-                                                    <table class="w-full border-collapse">
+                                                $html = '<style>
+                                                    .order-items-wrapper {
+                                                        background: #ffffff;
+                                                        border: 1px solid #e5e7eb;
+                                                        border-radius: 0.75rem;
+                                                        overflow: hidden;
+                                                        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+                                                    }
+                                                    .dark .order-items-wrapper {
+                                                        background: #18181b;
+                                                        border-color: #27272a;
+                                                    }
+                                                    .order-items-table {
+                                                        width: 100%;
+                                                        border-collapse: collapse;
+                                                    }
+                                                    .order-items-table thead tr {
+                                                        background: #f8fafc;
+                                                        border-bottom: 1px solid #e2e8f0;
+                                                    }
+                                                    .dark .order-items-table thead tr {
+                                                        background: #27272a;
+                                                        border-bottom-color: #3f3f46;
+                                                    }
+                                                    .order-items-table th {
+                                                        padding: 0.75rem 1rem;
+                                                        font-size: 0.75rem;
+                                                        font-weight: 600;
+                                                        text-transform: uppercase;
+                                                        letter-spacing: 0.05em;
+                                                        color: #475569;
+                                                    }
+                                                    .dark .order-items-table th {
+                                                        color: #94a3b8;
+                                                    }
+                                                    .order-items-table tbody tr {
+                                                        border-bottom: 1px solid #f1f5f9;
+                                                        transition: background-color 0.15s ease;
+                                                    }
+                                                    .dark .order-items-table tbody tr {
+                                                        border-bottom: 1px solid #27272a;
+                                                    }
+                                                    .order-items-table tbody tr:hover {
+                                                        background: #f8fafc;
+                                                    }
+                                                    .dark .order-items-table tbody tr:hover {
+                                                        background: rgba(255, 255, 255, 0.03);
+                                                    }
+                                                    .order-items-table td {
+                                                        padding: 0.75rem 1rem;
+                                                        font-size: 0.875rem;
+                                                        color: #334155;
+                                                        vertical-align: middle;
+                                                    }
+                                                    .dark .order-items-table td {
+                                                        color: #cbd5e1;
+                                                    }
+                                                    .order-item-title {
+                                                        font-weight: 600;
+                                                        font-size: 0.875rem;
+                                                        line-height: 1.3;
+                                                        color: #0f172a;
+                                                    }
+                                                    .dark .order-item-title {
+                                                        color: #f8fafc;
+                                                    }
+                                                    .order-item-sku {
+                                                        font-size: 0.75rem;
+                                                        color: #64748b;
+                                                        font-family: monospace;
+                                                        margin-top: 0.25rem;
+                                                    }
+                                                    .dark .order-item-sku {
+                                                        color: #94a3b8;
+                                                    }
+                                                    .order-item-thumb {
+                                                        width: 52px;
+                                                        height: 52px;
+                                                        min-width: 52px;
+                                                        max-width: 52px;
+                                                        min-height: 52px;
+                                                        max-height: 52px;
+                                                        flex-shrink: 0;
+                                                        overflow: hidden;
+                                                        border-radius: 6px;
+                                                        border: 1px solid #e2e8f0;
+                                                        background: #f8fafc;
+                                                        display: flex;
+                                                        align-items: center;
+                                                        justify-content: center;
+                                                    }
+                                                    .dark .order-item-thumb {
+                                                        border-color: #3f3f46;
+                                                        background: #27272a;
+                                                    }
+                                                    .order-summary-card {
+                                                        margin-top: 1.5rem;
+                                                        background: #f8fafc;
+                                                        border: 1px solid #e2e8f0;
+                                                        border-radius: 0.75rem;
+                                                        padding: 1.5rem;
+                                                    }
+                                                    .dark .order-summary-card {
+                                                        background: #18181b;
+                                                        border-color: #27272a;
+                                                    }
+                                                    .order-summary-row {
+                                                        display: flex;
+                                                        justify-content: space-between;
+                                                        padding: 0.5rem 0;
+                                                        border-bottom: 1px solid #e2e8f0;
+                                                        font-size: 0.875rem;
+                                                        color: #475569;
+                                                    }
+                                                    .dark .order-summary-row {
+                                                        border-bottom-color: #27272a;
+                                                        color: #94a3b8;
+                                                    }
+                                                    .order-summary-row .row-val {
+                                                        font-weight: 600;
+                                                        color: #1e293b;
+                                                    }
+                                                    .dark .order-summary-row .row-val {
+                                                        color: #f1f5f9;
+                                                    }
+                                                    .order-summary-grand {
+                                                        display: flex;
+                                                        justify-content: space-between;
+                                                        align-items: center;
+                                                        padding-top: 0.875rem;
+                                                        margin-top: 0.25rem;
+                                                    }
+                                                    .order-summary-grand .grand-label {
+                                                        font-size: 1rem;
+                                                        font-weight: 700;
+                                                        color: #0f172a;
+                                                    }
+                                                    .dark .order-summary-grand .grand-label {
+                                                        color: #f8fafc;
+                                                    }
+                                                    .order-summary-grand .grand-val {
+                                                        font-size: 1.25rem;
+                                                        font-weight: 800;
+                                                        color: #10b981;
+                                                    }
+                                                </style>
+                                                <div class="order-items-wrapper">
+                                                    <table class="order-items-table">
                                                         <thead>
-                                                            <tr class="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
-                                                                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider" style="width: 40px;">#</th>
-                                                                <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Item / SKU</th>
-                                                                <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider" style="width: 90px;">Quantity</th>
-                                                                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider" style="width: 120px;">Unit Price</th>
-                                                                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider" style="width: 130px;">Saudi VAT (15%)</th>
-                                                                <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider" style="width: 120px;">Subtotal</th>
+                                                            <tr>
+                                                                <th style="width: 40px; text-align: left;">#</th>
+                                                                <th style="text-align: left;">Item / SKU</th>
+                                                                <th style="width: 90px; text-align: center;">Quantity</th>
+                                                                <th style="width: 120px; text-align: right;">Unit Price</th>
+                                                                <th style="width: 130px; text-align: right;">Saudi VAT (15%)</th>
+                                                                <th style="width: 120px; text-align: right;">Subtotal</th>
                                                             </tr>
                                                         </thead>
-                                                        <tbody class="divide-y divide-gray-200 dark:divide-gray-700">';
+                                                        <tbody>';
                                                 
                                                 $counter = 1;
                                                 foreach ($items as $item) {
@@ -567,29 +747,29 @@ class OrderResource extends Resource
                                                     $imgHtml = '';
                                                     if ($img) {
                                                         $imgSrc = str_starts_with($img, 'http') ? $img : \Illuminate\Support\Facades\Storage::disk('public')->url($img);
-                                                        $imgHtml = '<div style="width: 52px; height: 52px; min-width: 52px; max-width: 52px; min-height: 52px; max-height: 52px; flex-shrink: 0; overflow: hidden; border-radius: 6px; border: 1px solid #e5e7eb; background: #f9fafb; display: flex; align-items: center; justify-content: center;"><img src="' . e($imgSrc) . '" alt="' . e((string)$productName) . '" style="width: 52px; height: 52px; max-width: 52px; max-height: 52px; object-fit: cover; display: block;" /></div>';
+                                                        $imgHtml = '<div class="order-item-thumb"><img src="' . e($imgSrc) . '" alt="' . e((string)$productName) . '" style="width: 100%; height: 100%; object-fit: cover; display: block;" /></div>';
                                                     } else {
-                                                        $imgHtml = '<div style="width: 52px; height: 52px; min-width: 52px; max-width: 52px; min-height: 52px; max-height: 52px; flex-shrink: 0; border-radius: 6px; background: #f3f4f6; border: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #9ca3af;">No Img</div>';
+                                                        $imgHtml = '<div class="order-item-thumb" style="font-size: 11px; color: #94a3b8;">No Img</div>';
                                                     }
 
                                                     $subtotal = ($item->quantity ?? 1) * ($item->price ?? 0);
                                                     $itemVat = (float)($item->tax ?? ($subtotal * 0.15));
 
-                                                    $html .= '<tr class="transition-colors duration-150">
-                                                        <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400" style="vertical-align: middle;">' . $counter . '</td>
-                                                        <td class="px-4 py-3 text-sm" style="vertical-align: middle;">
+                                                    $html .= '<tr>
+                                                        <td style="text-align: left;">' . $counter . '</td>
+                                                        <td>
                                                             <div style="display: flex; align-items: center; gap: 12px;">
                                                                 ' . $imgHtml . '
                                                                 <div>
-                                                                    <div class="font-semibold text-gray-900 dark:text-gray-100" style="font-size: 14px; line-height: 1.3;">' . e((string) $productName) . '</div>
-                                                                    <div class="text-xs text-gray-500 dark:text-gray-400 font-mono" style="margin-top: 3px;">SKU: ' . e((string) $sku) . '</div>
+                                                                    <div class="order-item-title">' . e((string) $productName) . '</div>
+                                                                    <div class="order-item-sku">SKU: ' . e((string) $sku) . '</div>
                                                                 </div>
                                                             </div>
                                                         </td>
-                                                        <td class="px-4 py-3 text-sm text-center text-gray-700 dark:text-gray-300 font-medium" style="vertical-align: middle;">' . ($item->quantity ?? 1) . '</td>
-                                                        <td class="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300 font-medium" style="vertical-align: middle;">' . format_currency($item->price ?? 0, 2, 'SAR') . '</td>
-                                                        <td class="px-4 py-3 text-sm text-right text-emerald-600 dark:text-emerald-400 font-medium" style="vertical-align: middle;">' . format_currency($itemVat, 2, 'SAR') . '</td>
-                                                        <td class="px-4 py-3 text-sm text-right font-bold text-gray-900 dark:text-gray-100" style="vertical-align: middle;">' . format_currency($subtotal, 2, 'SAR') . '</td>
+                                                        <td style="text-align: center; font-weight: 500;">' . ($item->quantity ?? 1) . '</td>
+                                                        <td style="text-align: right; font-weight: 500;">' . format_currency($item->price ?? 0, 2, 'SAR') . '</td>
+                                                        <td style="text-align: right; font-weight: 500; color: #10b981;">' . format_currency($itemVat, 2, 'SAR') . '</td>
+                                                        <td style="text-align: right; font-weight: 700;">' . format_currency($subtotal, 2, 'SAR') . '</td>
                                                     </tr>';
                                                     $counter++;
                                                 }
@@ -609,68 +789,68 @@ class OrderResource extends Resource
                                                     $totalDeduction = $vendor->calculateTotalDeduction($totalAmount);
                                                     $netEarnings = $vendor->calculateVendorPayout($totalAmount);
 
-                                                    $html .= '<div class="mt-6 bg-gray-50 rounded-lg p-6 border border-gray-200">
-                                                        <div class="max-w-md ml-auto">
-                                                            <div class="flex justify-between py-2 border-b border-gray-200">
-                                                                <span class="text-sm font-medium text-gray-600">Your Items Total:</span>
-                                                                <span class="text-sm font-semibold text-gray-700">' . $totalItems . ' item(s)</span>
+                                                    $html .= '<div class="order-summary-card">
+                                                        <div style="max-width: 28rem; margin-left: auto;">
+                                                            <div class="order-summary-row">
+                                                                <span>Your Items Total:</span>
+                                                                <span class="row-val">' . $totalItems . ' item(s)</span>
                                                             </div>
-                                                            <div class="flex justify-between py-2 border-b border-gray-200">
-                                                                <span class="text-sm font-medium text-gray-600">Gross Sales Amount:</span>
-                                                                <span class="text-sm font-semibold text-gray-700">' . format_currency($totalAmount, 2) . '</span>
+                                                            <div class="order-summary-row">
+                                                                <span>Gross Sales Amount:</span>
+                                                                <span class="row-val">' . format_currency($totalAmount, 2) . '</span>
                                                             </div>
-                                                            <div class="flex justify-between py-2 border-b border-gray-200 text-amber-700">
-                                                                <span class="text-sm font-medium">Platform Fee (' . $commissionRate . '%):</span>
-                                                                <span class="text-sm font-semibold">-' . format_currency($commissionAmount, 2) . '</span>
+                                                            <div class="order-summary-row" style="color: #d97706;">
+                                                                <span>Platform Fee (' . $commissionRate . '%):</span>
+                                                                <span class="row-val" style="color: #d97706;">-' . format_currency($commissionAmount, 2) . '</span>
                                                             </div>
-                                                            <div class="flex justify-between py-2 border-b border-gray-200 text-amber-700">
-                                                                <span class="text-sm font-medium">GST on Fee (' . $gstRate . '%):</span>
-                                                                <span class="text-sm font-semibold">-' . format_currency($gstAmount, 2) . '</span>
+                                                            <div class="order-summary-row" style="color: #d97706;">
+                                                                <span>GST on Fee (' . $gstRate . '%):</span>
+                                                                <span class="row-val" style="color: #d97706;">-' . format_currency($gstAmount, 2) . '</span>
                                                             </div>
-                                                            <div class="flex justify-between py-2 border-b border-gray-200 text-red-700 font-medium">
-                                                                <span class="text-sm font-semibold">Total Platform Charges:</span>
-                                                                <span class="text-sm font-bold">-' . format_currency($totalDeduction, 2) . '</span>
+                                                            <div class="order-summary-row" style="color: #ef4444;">
+                                                                <span style="font-weight: 600;">Total Platform Charges:</span>
+                                                                <span class="row-val" style="color: #ef4444; font-weight: 700;">-' . format_currency($totalDeduction, 2) . '</span>
                                                             </div>
-                                                            <div class="flex justify-between pt-3 mt-1">
-                                                                <span class="text-base font-bold text-gray-800">Your Net Payout:</span>
-                                                                <span class="text-xl font-bold text-emerald-600">' . format_currency($netEarnings, 2) . '</span>
+                                                            <div class="order-summary-grand">
+                                                                <span class="grand-label">Your Net Payout:</span>
+                                                                <span class="grand-val">' . format_currency($netEarnings, 2) . '</span>
                                                             </div>
                                                         </div>
                                                     </div>';
                                                 } else {
-                                                    $html .= '<div class="mt-6 bg-gray-50 rounded-lg p-6 border border-gray-200">
-                                                        <div class="max-w-md ml-auto">
-                                                            <div class="flex justify-between py-2 border-b border-gray-200">
-                                                                <span class="text-sm font-medium text-gray-600">Total Items:</span>
-                                                                <span class="text-sm font-semibold text-gray-700">' . $totalItems . '</span>
+                                                    $html .= '<div class="order-summary-card">
+                                                        <div style="max-width: 28rem; margin-left: auto;">
+                                                            <div class="order-summary-row">
+                                                                <span>Total Items:</span>
+                                                                <span class="row-val">' . $totalItems . '</span>
                                                             </div>
-                                                            <div class="flex justify-between py-2 border-b border-gray-200">
-                                                                <span class="text-sm font-medium text-gray-600">Items Subtotal:</span>
-                                                                <span class="text-sm font-semibold text-gray-700">' . format_currency($totalAmount, 2) . '</span>
+                                                            <div class="order-summary-row">
+                                                                <span>Items Subtotal:</span>
+                                                                <span class="row-val">' . format_currency($totalAmount, 2) . '</span>
                                                             </div>
-                                                            <div class="flex justify-between py-2 border-b border-gray-200">
-                                                                <span class="text-sm font-medium text-gray-600">Shipping:</span>
-                                                                <span class="text-sm font-semibold text-gray-700">' . format_currency($record->shipping_amount ?? 0, 2) . '</span>
+                                                            <div class="order-summary-row">
+                                                                <span>Shipping:</span>
+                                                                <span class="row-val">' . format_currency($record->shipping_amount ?? 0, 2) . '</span>
                                                             </div>';
 
                                                     if ($record && (strtolower($record->payment_method ?? '') === 'cod' || ($record->delivery_amount ?? 0) > 0)) {
-                                                        $html .= '<div class="flex justify-between py-2 border-b border-gray-200">
-                                                            <span class="text-sm font-medium text-gray-600">COD:</span>
-                                                            <span class="text-sm font-semibold text-gray-700">' . format_currency($record->delivery_amount ?? 0, 2) . '</span>
+                                                        $html .= '<div class="order-summary-row">
+                                                            <span>COD:</span>
+                                                            <span class="row-val">' . format_currency($record->delivery_amount ?? 0, 2) . '</span>
                                                         </div>';
                                                     }
 
-                                                    $html .= '<div class="flex justify-between py-2 border-b border-gray-200">
-                                                                <span class="text-sm font-medium text-gray-600">Discount:</span>
-                                                                <span class="text-sm font-semibold text-gray-700">-' . format_currency($record->discount_amount ?? 0, 2) . '</span>
+                                                    $html .= '<div class="order-summary-row">
+                                                                <span>Discount:</span>
+                                                                <span class="row-val" style="color: #ef4444;">-' . format_currency($record->discount_amount ?? 0, 2) . '</span>
                                                             </div>
-                                                            <div class="flex justify-between py-2 border-b border-gray-200">
-                                                                <span class="text-sm font-medium text-gray-600">Tax:</span>
-                                                                <span class="text-sm font-semibold text-gray-700">' . format_currency($record->tax_amount ?? 0, 2) . '</span>
+                                                            <div class="order-summary-row">
+                                                                <span>Tax (15% VAT):</span>
+                                                                <span class="row-val">' . format_currency($record->tax_amount ?? 0, 2) . '</span>
                                                             </div>
-                                                            <div class="flex justify-between pt-3 mt-1">
-                                                                <span class="text-base font-bold text-gray-700">Grand Total:</span>
-                                                                <span class="text-xl font-bold text-gray-700">' . format_currency($record->total_amount ?? 0, 2) . '</span>
+                                                            <div class="order-summary-grand">
+                                                                <span class="grand-label">Grand Total:</span>
+                                                                <span class="grand-val">' . format_currency($record->total_amount ?? 0, 2) . '</span>
                                                             </div>
                                                         </div>
                                                     </div>';
@@ -678,6 +858,29 @@ class OrderResource extends Resource
                                                 
                                                 return new \Illuminate\Support\HtmlString($html);
                                             })
+                                            ->columnSpanFull(),
+                                    ]),
+                            ]),
+                        
+                        // 6. Activity & Timeline Tab (سجل النشاط والعمليات)
+                        Tab::make('Activity & Timeline')
+                            ->icon('heroicon-o-clock')
+                            ->badge(function (?Order $record) {
+                                if (!$record) return null;
+                                $actCount = \App\Models\OrderActivity::where('order_id', $record->id)->count();
+                                $notifCount = \App\Models\NotificationLog::where('order_id', $record->id)
+                                    ->orWhere('recipient', $record->email)
+                                    ->count();
+                                $total = $actCount + $notifCount;
+                                return $total > 0 ? (string)$total : null;
+                            })
+                            ->schema([
+                                Section::make('Order Activity & Notification Timeline (سجل العمليات والإشعارات)')
+                                    ->description('Complete chronological lifecycle of this order: Creation, Payment, Status Changes, and All Triggered SMS & Emails.')
+                                    ->schema([
+                                        Placeholder::make('activity_timeline')
+                                            ->label('')
+                                            ->content(fn (?Order $record) => $record ? view('filament.components.order-activity-timeline', ['order' => $record]) : '')
                                             ->columnSpanFull(),
                                     ]),
                             ]),
@@ -897,25 +1100,43 @@ class OrderResource extends Resource
 
                 Tables\Columns\TextColumn::make('total_amount')
                     ->label('Total')
-                    ->money()
-                    ->sortable()
-                    ->searchable()
-                    ->description(function ($record) {
-                        if (strtoupper($record->currency ?? 'SAR') === 'USD' && $record->currency_amount) {
-                            return '$' . number_format((float)$record->currency_amount, 2) . ' USD';
+                    ->getStateUsing(function ($record) {
+                        $isPaypal = strtolower((string)($record->payment_method ?? '')) === 'paypal';
+                        
+                        if ($isPaypal) {
+                            $rate = (float)($record->exchange_rate ?: 0.2667);
+                            $sarTotal = (float)($record->sar_amount ?: $record->total_amount);
+                            $usdVal = ($record->currency_amount && (float)$record->currency_amount < $sarTotal)
+                                ? (float)$record->currency_amount
+                                : round($sarTotal * $rate, 2);
+                                
+                            return '$' . number_format($usdVal, 2) . ' USD';
+                        }
+
+                        $sarVal = (float)($record->sar_amount ?: $record->total_amount);
+                        return number_format($sarVal, 2) . ' SAR';
+                    })
+                    ->tooltip(function ($record) {
+                        $isPaypal = strtolower((string)($record->payment_method ?? '')) === 'paypal';
+                        if ($isPaypal) {
+                            $sarTotal = (float)($record->sar_amount ?: $record->total_amount);
+                            return 'Original Total: ' . number_format($sarTotal, 2) . ' SAR (Rate: ' . ($record->exchange_rate ?: 0.2667) . ')';
                         }
                         return null;
                     })
-                    ->visible(fn () => auth()->user()?->isAdmin() ?? false)
-                    ->summarize([
-                        Tables\Columns\Summarizers\Sum::make()->money(),
-                    ]),
+                    ->sortable(query: function ($query, $direction) {
+                        return $query->orderBy('total_amount', $direction);
+                    })
+                    ->searchable(query: function ($query, $search) {
+                        return $query->where('total_amount', 'like', "%{$search}%");
+                    })
+                    ->visible(fn () => auth()->user()?->isAdmin() ?? false),
 
                 Tables\Columns\TextColumn::make('currency')
                     ->label('Currency')
                     ->badge()
-                    ->color(fn ($state) => strtoupper((string)($state ?: 'SAR')) === 'USD' ? 'success' : 'gray')
-                    ->formatStateUsing(fn ($state) => strtoupper((string)($state ?: 'SAR')))
+                    ->color(fn ($record) => (strtoupper((string)($record?->currency ?: 'SAR')) === 'USD' || strtolower((string)($record?->payment_method ?? '')) === 'paypal') ? 'success' : 'gray')
+                    ->formatStateUsing(fn ($record) => (strtoupper((string)($record?->currency ?: 'SAR')) === 'USD' || strtolower((string)($record?->payment_method ?? '')) === 'paypal') ? 'USD' : 'SAR')
                     ->toggleable(isToggledHiddenByDefault: true),
                 
                 Tables\Columns\TextColumn::make('created_at')
@@ -989,7 +1210,7 @@ class OrderResource extends Resource
 
                 Tables\Filters\SelectFilter::make('status')
                     ->options([
-                        "pending_payment" => "Pending Payment",
+                        "pending_payment" => "Pending payment",
                         "processing" => "Processing",
                         "printed" => "Printed",
                         "shipped" => "Shipped",
@@ -998,10 +1219,6 @@ class OrderResource extends Resource
                         "cancelled" => "Cancelled",
                         "refunded" => "Refunded",
                         "failed" => "Failed",
-                        "new" => "New",
-                        "pending" => "Pending (Review)",
-                        "order_shipped" => "Order Shipped (Legacy)",
-                        "declined" => "Declined (Legacy)",
                     ]),
                 
                 Tables\Filters\SelectFilter::make('payment_status')
@@ -1044,6 +1261,65 @@ class OrderResource extends Resource
                         ->label('View'),
                     Tables\Actions\EditAction::make()
                         ->label('Edit / Fulfill'),
+                    Tables\Actions\Action::make('paymentLink')
+                        ->label('Payment Link / رابط الدفع')
+                        ->icon('heroicon-o-credit-card')
+                        ->color('success')
+                        ->modalHeading(fn ($record) => 'Payment Link - Order #' . ($record->order_number ?: $record->id))
+                        ->modalDescription('Share this direct payment link with customer via WhatsApp, SMS, or Email to complete payment.')
+                        ->form(function ($record) {
+                            $frontendUrl = rtrim(config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:3000')), '/');
+                            $orderKey = $record->order_number ?: $record->id;
+                            $payLinkAr = "{$frontendUrl}/order-pay/{$orderKey}";
+                            $payLinkEn = "{$frontendUrl}/en/order-pay/{$orderKey}";
+                            $phone = preg_replace('/[^0-9]/', '', (string)($record->customer_phone ?: $record->phone));
+                            if (!empty($phone) && !str_starts_with($phone, '966')) {
+                                if (str_starts_with($phone, '05')) {
+                                    $phone = '966' . substr($phone, 1);
+                                } elseif (str_starts_with($phone, '5')) {
+                                    $phone = '966' . $phone;
+                                }
+                            }
+                            $amount = number_format((float)$record->total_amount, 2);
+                            $waMsg = urlencode("مرحباً بك عزيزنا العميل 🌸\nيمكنك إتمام سداد قيمة طلبك رقم {$record->order_number} بمبلغ {$amount} ريال عبر الرابط المباشر:\n{$payLinkAr}\n\nشكراً لاختيارك متجر غراس.");
+                            $waUrl = !empty($phone) ? "https://wa.me/{$phone}?text={$waMsg}" : "https://wa.me/?text={$waMsg}";
+
+                            return [
+                                Forms\Components\Placeholder::make('order_status_info')
+                                    ->label('Payment Status')
+                                    ->content(fn () => new \Illuminate\Support\HtmlString(
+                                        $record->payment_status === 'paid'
+                                            ? "<span class='inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800'>✓ Order is Paid in Full (مسدد بالكامل)</span>"
+                                            : "<span class='inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800'>⏳ Awaiting Payment (في انتظار السداد) - {$amount} SAR</span>"
+                                    )),
+
+                                Forms\Components\TextInput::make('payment_link_ar')
+                                    ->label('Arabic Payment Link (رابط السداد العربي)')
+                                    ->default($payLinkAr)
+                                    ->readOnly()
+                                    ->helperText('Copy or share this link directly with the customer.'),
+
+                                Forms\Components\TextInput::make('payment_link_en')
+                                    ->label('English Payment Link (رابط السداد الإنجليزي)')
+                                    ->default($payLinkEn)
+                                    ->readOnly(),
+
+                                Forms\Components\Placeholder::make('whatsapp_share')
+                                    ->label('Quick Share')
+                                    ->content(fn () => new \Illuminate\Support\HtmlString(
+                                        "<div class='flex items-center gap-3 pt-1'>
+                                            <a href='{$waUrl}' target='_blank' class='inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-sm'>
+                                                <span>💬 Send via WhatsApp (إرسال عبر واتساب)</span>
+                                            </a>
+                                            <a href='{$payLinkAr}' target='_blank' class='inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-xs transition border border-gray-300'>
+                                                <span>🔗 Open Page in New Tab</span>
+                                            </a>
+                                        </div>"
+                                    )),
+                            ];
+                        })
+                        ->modalSubmitAction(false)
+                        ->modalCancelActionLabel('Close'),
                     Tables\Actions\Action::make('printGiftCard')
                         ->label('Print Gift Card')
                         ->icon('heroicon-o-gift')
@@ -1145,7 +1421,7 @@ class OrderResource extends Resource
                         ->form([
                             Select::make('status')
                                 ->options([
-                                    "pending_payment" => "Pending Payment",
+                                    "pending_payment" => "Pending payment",
                                     "processing" => "Processing",
                                     "printed" => "Printed",
                                     "shipped" => "Shipped",
@@ -1154,10 +1430,6 @@ class OrderResource extends Resource
                                     "cancelled" => "Cancelled",
                                     "refunded" => "Refunded",
                                     "failed" => "Failed",
-                                    "new" => "New",
-                                    "pending" => "Pending (Review)",
-                                    "order_shipped" => "Order Shipped (Legacy)",
-                                    "declined" => "Declined (Legacy)",
                                 ])
                                 ->required()
                                 ->live(),

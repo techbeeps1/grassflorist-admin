@@ -17,12 +17,17 @@ class GlobalSetting extends Model
         'sitemap_include_static_pages' => 'boolean',
         'sitemap_include_blog' => 'boolean',
         'llms_enabled' => 'boolean',
+        'is_vat_included' => 'boolean',
+        'msegat_sms_enabled' => 'boolean',
+        'odoo_enabled' => 'boolean',
+        'odoo_auto_sync_on_paid' => 'boolean',
     ];
 
     protected $appends = [
         'site_logo_url',
         'site_logo_dark_url',
         'site_favicon_url',
+        'email_logo_url',
     ];
 
     protected static function booted(): void
@@ -96,6 +101,22 @@ class GlobalSetting extends Model
         }
 
         return \Illuminate\Support\Facades\Storage::disk('public')->url($this->site_favicon);
+    }
+
+    public function getEmailLogoUrlAttribute(): ?string
+    {
+        if (!empty($this->email_custom_logo_url)) {
+            return $this->email_custom_logo_url;
+        }
+
+        if (!empty($this->email_logo)) {
+            if (str_starts_with($this->email_logo, 'http')) {
+                return $this->email_logo;
+            }
+            return \Illuminate\Support\Facades\Storage::disk('public')->url($this->email_logo);
+        }
+
+        return $this->site_logo_url;
     }
 
     public function updatedBy()

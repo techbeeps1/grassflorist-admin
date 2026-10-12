@@ -15,10 +15,6 @@ class ListShippingMethods extends ListRecords
         return [
             Actions\CreateAction::make()
                 ->label('New Shipping Method'),
-            Actions\Action::make('configure_slabs')
-                ->label('Configure Weight & COD Rules')
-                ->color('gray')
-                ->url(\App\Filament\Resources\ShippingSettingResource::getUrl('edit', ['record' => 1])),
         ];
     }
 }

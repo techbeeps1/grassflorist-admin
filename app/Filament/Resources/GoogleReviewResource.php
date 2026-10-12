@@ -14,12 +14,12 @@ class GoogleReviewResource extends Resource
 {
     protected static ?string $model = GoogleReview::class;
 
-    protected static ?string $navigationGroup = 'Shop';
+    protected static ?string $navigationGroup = 'Content & Storefront';
     protected static ?string $navigationIcon = 'heroicon-o-star';
     protected static ?string $navigationLabel = 'Google Reviews';
     protected static ?string $modelLabel = 'Google Review';
     protected static ?string $pluralModelLabel = 'Google Reviews';
-    protected static ?int $navigationSort = 15;
+    protected static ?int $navigationSort = 5;
 
     public static function canViewAny(): bool
     {

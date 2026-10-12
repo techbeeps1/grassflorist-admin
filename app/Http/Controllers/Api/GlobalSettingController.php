@@ -42,6 +42,12 @@ class GlobalSettingController extends Controller
                 'tax' => [
                     'vat_percentage' => (float)($setting->vat_percentage ?? 15.00),
                     'vat_registration_number' => $setting->vat_registration_number,
+                    'is_vat_included' => (bool)($setting->is_vat_included ?? false),
+                ],
+                'shipping' => [
+                    'inside_jeddah_fee' => (float)(\App\Models\ShippingMethod::where('is_active', true)->where('city', 'Jeddah')->value('price') ?? 30.00),
+                    'default_delivery_fee' => (float)(\App\Models\ShippingMethod::where('is_active', true)->value('price') ?? 30.00),
+                    'free_shipping_threshold' => 250.00,
                 ],
                 'branding' => [
                     'site_name' => [
@@ -82,7 +88,6 @@ class GlobalSettingController extends Controller
                         'en' => $setting->contact_address_en ?: $setting->contact_address ?: '4366 Al Kayyal Street, Al-Rawdah District, Jeddah 23434, Saudi Arabia',
                         'ar' => $setting->contact_address_ar ?: '4366 شارع الكيال، حي الروضة، جدة 23434، المملكة العربية السعودية',
                     ],
-                    'business_hours' => $setting->business_hours ?: 'Daily 9:00 AM – 11:30 PM AST',
                 ],
                 'social' => [
                     'facebook' => $setting->social_facebook ?: 'https://facebook.com/grassflorist',

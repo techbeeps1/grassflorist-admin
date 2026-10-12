@@ -135,12 +135,7 @@
 <body>
     @php
         // Media Base URL resolution with fallback to production domain
-        $appUrl = config('app.url') ?: env('APP_URL');
-        if (empty($appUrl) || str_contains($appUrl, '127.0.0.1') || str_contains($appUrl, 'localhost')) {
-            $mediaBaseUrl = 'https://admin.bookwindow.in';
-        } else {
-            $mediaBaseUrl = rtrim($appUrl, '/');
-        }
+        $mediaBaseUrl = rtrim($appUrl ?: config('app.url', 'https://grassflorist.com'), '/');
 
         $customerDisplayName = !empty($order->first_name)
             ? trim($order->first_name . ' ' . ($order->last_name ?? ''))
@@ -149,12 +144,17 @@
                 : (!empty($order->customer?->first_name)
                     ? trim($order->customer->first_name . ' ' . ($order->customer->last_name ?? ''))
                     : 'Customer'));
+        $logoPath = public_path('images/grass-logo.webp');
+        $brandLogo = file_exists($logoPath)
+            ? ('data:image/webp;base64,' . base64_encode(file_get_contents($logoPath)))
+            : asset('images/grass-logo.webp');
     @endphp
 
-    <div class="email-container" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; font-family: 'Arial', sans-serif;">
+    <div class="email-container" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; max-width: 600px; margin: 0 auto; border: 1px solid #EFE7DC; font-family: 'Segoe UI', Roboto, sans-serif;">
         <!-- Logo Header -->
-        <div class="header" style="background-color: #f8fafc; padding: 20px; text-align: center; border-bottom: 1px solid #e2e8f0;">
-            <img src="https://admin.bookwindow.in/storage/app/public/logo.png" alt="{{ config('app.name') }}" class="logo" style="max-width: 90px; height: auto; display: block; margin: 0 auto;">
+        <div class="header" style="background-color: #2D3F33; padding: 24px; text-align: center; border-bottom: 3px solid #8fae2a;">
+            <img src="{{ $brandLogo }}" alt="Grass Florist" class="logo" style="max-width: 130px; height: auto; display: block; margin: 0 auto; filter: brightness(0) invert(1);">
+            <div style="color: #C2D4BE; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; margin-top: 6px;">Luxury Floral Atelier</div>
         </div>
         
         <!-- Content -->
@@ -272,7 +272,7 @@
             @endif
 
             <p style="margin-top: 24px; font-size: 13px; color: #64748b; line-height: 1.5;">
-                We'll send you another email when your order ships. If you have any questions about your order, please reply to this email or contact us at <a href="mailto:info@bookwindow.in" style="color: #2563eb; text-decoration: none; font-weight: 600;">info@bookwindow.in</a>.
+                We'll send you another email when your order ships. If you have any questions about your order, please reply to this email or contact us at <a href="mailto:info@grassflorist.com" style="color: #8fae2a; text-decoration: none; font-weight: 600;">info@grassflorist.com</a>.
             </p>
             
             <p style="font-size: 13px; color: #475569; margin-bottom: 0;">

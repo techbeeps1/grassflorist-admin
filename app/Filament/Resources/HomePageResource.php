@@ -21,7 +21,7 @@ use Filament\Forms\Components\TextInput;
 class HomePageResource extends Resource
 {
     protected static ?string $model = HomePage::class;
-    protected static ?string $navigationGroup = 'Pages';
+    protected static ?string $navigationGroup = 'Content & Storefront';
     protected static ?string $navigationIcon = 'heroicon-o-home';
     protected static ?string $modelLabel = 'Home Page';
     protected static ?string $navigationLabel = 'Home Page';

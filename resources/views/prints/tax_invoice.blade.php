@@ -89,7 +89,7 @@
     <style>
         @page {
             size: A4 portrait;
-            margin: 10mm 12mm;
+            margin: 0;
         }
 
         * {
@@ -351,8 +351,11 @@
 
         @media print {
             body {
-                background: none !important;
+                background: #ffffff !important;
                 padding: 0 !important;
+                margin: 0 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
             }
 
             .toolbar-wrapper {
@@ -362,10 +365,12 @@
             .invoice-wrapper {
                 box-shadow: none !important;
                 border-radius: 0 !important;
-                margin: 0 !important;
-                padding: 0 !important;
+                border: none !important;
+                margin: 0 auto !important;
+                padding: 10mm 12mm 12mm 12mm !important;
                 max-width: 100% !important;
                 width: 100% !important;
+                box-sizing: border-box !important;
             }
 
             .products-table thead th {
@@ -610,5 +615,14 @@
 
     </div>
 
+    @if(request('print') == 1 || request('download') == 1)
+    <script>
+        window.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                window.print();
+            }, 600);
+        });
+    </script>
+    @endif
 </body>
 </html>

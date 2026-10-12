@@ -16,8 +16,8 @@ class EmailTemplateResource extends Resource
 {
     protected static ?string $model = EmailTemplate::class;
     protected static ?string $navigationIcon = 'heroicon-o-envelope';
-    protected static ?string $navigationGroup = 'Settings';
-    protected static ?int $navigationSort = 4;
+    protected static ?string $navigationGroup = 'Communications';
+    protected static ?int $navigationSort = 1;
     protected static ?string $navigationLabel = 'Email Templates';
     protected static ?string $modelLabel = 'Email Template';
 
@@ -211,17 +211,43 @@ class EmailTemplateResource extends Resource
 
                             $rendered = $record->render($sampleData, $data['test_language']);
 
-                            Mail::html($rendered['body'], function ($message) use ($data, $rendered) {
+                            $fullHtml = view('emails.layouts.brand-email', [
+                                'slot' => $rendered['body'],
+                                'subject' => $rendered['subject'],
+                                'locale' => $data['test_language'],
+                            ])->render();
+
+                            Mail::html($fullHtml, function ($message) use ($data, $rendered) {
                                 $message->to($data['test_email'])
                                     ->subject('[TEST PREVIEW] ' . $rendered['subject']);
                             });
 
+                            \App\Models\NotificationLog::create([
+                                'channel' => 'email',
+                                'event_key' => 'test_' . $record->event_key,
+                                'recipient' => $data['test_email'],
+                                'subject_or_sender' => '[TEST PREVIEW] ' . $rendered['subject'],
+                                'content' => $fullHtml,
+                                'status' => 'sent',
+                                'error_message' => null,
+                            ]);
+
                             Notification::make()
                                 ->title('Test Email Sent Successfully!')
-                                ->body('Sample preview sent to ' . $data['test_email'])
+                                ->body('Branded email preview sent to ' . $data['test_email'])
                                 ->success()
                                 ->send();
                         } catch (\Exception $e) {
+                            \App\Models\NotificationLog::create([
+                                'channel' => 'email',
+                                'event_key' => 'test_' . $record->event_key,
+                                'recipient' => $data['test_email'] ?? 'unknown',
+                                'subject_or_sender' => '[TEST PREVIEW] ' . ($rendered['subject'] ?? 'N/A'),
+                                'content' => $fullHtml ?? ($rendered['body'] ?? ''),
+                                'status' => 'failed',
+                                'error_message' => $e->getMessage(),
+                            ]);
+
                             Notification::make()
                                 ->title('Email Dispatch Failed')
                                 ->body($e->getMessage())

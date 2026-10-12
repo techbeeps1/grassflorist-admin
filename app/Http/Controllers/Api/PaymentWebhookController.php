@@ -82,4 +82,27 @@ class PaymentWebhookController extends Controller
 
         return response()->json(['status' => 'received']);
     }
+
+    /**
+     * PayPal Webhook Handler
+     */
+    public function handlePayPal(Request $request): JsonResponse
+    {
+        Log::info('PayPal Webhook Received', ['payload' => $request->all()]);
+
+        $service = new \App\Services\Payments\PayPalService();
+        $res = $service->handleWebhook($request->all(), $request->headers->all());
+
+        if (!empty($res['order_number'])) {
+            $order = Order::where('order_number', $res['order_number'])
+                ->orWhere('id', $res['order_number'])
+                ->first();
+
+            if ($order && $res['is_paid']) {
+                PaymentManager::markOrderAsPaid($order, $res['transaction_id'] ?? 'PAYPAL_HOOK', 'paypal', $request->all(), 'WEBHOOK');
+            }
+        }
+
+        return response()->json(['status' => 'received']);
+    }
 }

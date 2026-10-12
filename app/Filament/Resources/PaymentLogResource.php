@@ -20,11 +20,11 @@ class PaymentLogResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-document-text';
 
-    protected static ?string $navigationGroup = 'Payment Logs';
+    protected static ?string $navigationGroup = 'Logs';
 
     protected static ?string $navigationLabel = 'Payment Logs';
 
-    protected static ?int $navigationSort = 10;
+    protected static ?int $navigationSort = 3;
 
     public static function canCreate(): bool
     {
@@ -91,24 +91,39 @@ class PaymentLogResource extends Resource
                     ->label('Order #')
                     ->searchable()
                     ->sortable()
-                    ->copyable(),
+                    ->copyable()
+                    ->weight('bold'),
+
+                Tables\Columns\TextColumn::make('gateway')
+                    ->label('Gateway')
+                    ->badge()
+                    ->colors([
+                        'primary' => fn ($state) => in_array($state, ['hyperpay', 'mada', 'applepay', 'stcpay']),
+                        'success' => fn ($state) => str_starts_with($state, 'tabby'),
+                        'warning' => fn ($state) => str_starts_with($state, 'tamara'),
+                        'info' => fn ($state) => str_starts_with($state, 'paypal'),
+                        'gray' => fn ($state) => in_array($state, ['cod', 'manual']),
+                    ])
+                    ->formatStateUsing(fn ($state) => strtoupper($state))
+                    ->sortable(),
 
                 Tables\Columns\TextColumn::make('event_type')
                     ->label('Event')
                     ->badge()
                     ->colors([
-                        'info' => 'callback',
+                        'info' => fn ($state) => in_array($state, ['callback', 'frontend_verify']),
                         'purple' => 'webhook',
                         'warning' => 'cron_sync',
                         'primary' => 'manual_recovery',
-                        'gray' => 'order_created',
+                        'gray' => fn ($state) => in_array($state, ['order_created', 'initiate']),
                     ])
                     ->formatStateUsing(fn (string $state): string => match ($state) {
                         'callback' => 'Callback',
                         'webhook' => 'Webhook',
                         'cron_sync' => 'Cron Sync',
                         'manual_recovery' => 'Manual Recover',
-                        'order_created' => 'Checkout Init',
+                        'order_created', 'initiate' => 'Session Init',
+                        'frontend_verify' => 'Verify Return',
                         default => ucfirst($state),
                     })
                     ->sortable(),
@@ -117,11 +132,11 @@ class PaymentLogResource extends Resource
                     ->label('Status')
                     ->badge()
                     ->color(function ($state, $record) {
-                        if ($record && $record->event_type === 'order_created' && in_array($state, ['success', 'initiated'])) {
+                        if ($record && in_array($record->event_type, ['order_created', 'initiate']) && in_array($state, ['success', 'initiated'])) {
                             return 'info';
                         }
                         return match ($state) {
-                            'success' => 'success',
+                            'success', 'paid' => 'success',
                             'initiated' => 'info',
                             'pending' => 'warning',
                             'cancelled' => 'warning',
@@ -131,13 +146,13 @@ class PaymentLogResource extends Resource
                         };
                     })
                     ->formatStateUsing(function ($state, $record) {
-                        if ($record && $record->event_type === 'order_created' && $state === 'success') {
+                        if ($record && in_array($record->event_type, ['order_created', 'initiate']) && $state === 'success') {
                             return 'Initiated';
                         }
                         return match ($state) {
                             'initiated' => 'Initiated',
                             'pending' => 'Pending',
-                            'success' => 'Success',
+                            'success', 'paid' => 'Success',
                             'failed' => 'Failed',
                             'cancelled' => 'Cancelled',
                             'skipped' => 'Skipped',
@@ -149,17 +164,17 @@ class PaymentLogResource extends Resource
 
                 Tables\Columns\TextColumn::make('amount')
                     ->label('Amount')
-                    ->money('INR')
+                    ->formatStateUsing(fn ($state) => $state ? number_format((float)$state, 2) . ' SAR' : '-')
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('razorpay_order_id')
-                    ->label('Razorpay Order ID')
+                    ->label('Gateway Checkout ID')
                     ->searchable()
                     ->copyable()
                     ->toggleable(),
 
                 Tables\Columns\TextColumn::make('razorpay_payment_id')
-                    ->label('Razorpay Payment ID')
+                    ->label('Transaction Ref')
                     ->searchable()
                     ->copyable()
                     ->toggleable(),
@@ -172,14 +187,24 @@ class PaymentLogResource extends Resource
             ])
             ->defaultSort('created_at', 'desc')
             ->filters([
+                Tables\Filters\SelectFilter::make('gateway')
+                    ->label('Gateway')
+                    ->options([
+                        'hyperpay' => 'HyperPay (Mada / Visa / ApplePay)',
+                        'tabby' => 'Tabby',
+                        'tamara' => 'Tamara',
+                        'paypal' => 'PayPal',
+                        'cod' => 'Cash on Delivery',
+                    ]),
+
                 Tables\Filters\SelectFilter::make('event_type')
                     ->label('Event Type')
                     ->options([
+                        'initiate' => 'Session Initiated',
+                        'webhook' => 'Webhook Received',
+                        'frontend_verify' => 'Frontend Verification',
                         'callback' => 'Callback',
-                        'webhook' => 'Webhook',
                         'cron_sync' => 'Cron Sync',
-                        'manual_recovery' => 'Manual Recovery',
-                        'order_created' => 'Checkout Initiated',
                     ]),
 
                 Tables\Filters\SelectFilter::make('status')
@@ -189,8 +214,6 @@ class PaymentLogResource extends Resource
                         'initiated' => 'Initiated',
                         'cancelled' => 'Cancelled',
                         'failed' => 'Failed',
-                        'pending' => 'Pending',
-                        'skipped' => 'Skipped',
                         'error' => 'Error',
                     ]),
             ])

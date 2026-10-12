@@ -15,7 +15,7 @@ class PaymentGatewayResource extends Resource
     protected static ?string $model = PaymentGateway::class;
     protected static ?string $navigationIcon = 'heroicon-o-credit-card';
     protected static ?string $navigationGroup = 'Settings';
-    protected static ?int $navigationSort = 3;
+    protected static ?int $navigationSort = 2;
     protected static ?string $navigationLabel = 'Payment Gateways';
     protected static ?string $modelLabel = 'Payment Gateway';
 
@@ -71,13 +71,107 @@ class PaymentGatewayResource extends Resource
                 Forms\Components\Section::make('API Keys & Credentials')
                     ->description('Enter live or sandbox credentials for this payment gateway.')
                     ->schema([
-                        // Dynamic credentials based on gateway code
-                        Forms\Components\KeyValue::make('credentials')
-                            ->label('Gateway Credentials (Key-Value)')
-                            ->helperText('e.g. access_token, entity_id_mada, entity_id_applepay, entity_id_visa_master, public_key, secret_key')
-                            ->keyLabel('Credential Key')
-                            ->valueLabel('Secret Value / ID')
-                            ->reorderable(),
+                        // 1. HyperPay Credentials
+                        Forms\Components\Grid::make(2)
+                            ->visible(fn (?PaymentGateway $record) => $record?->code === 'hyperpay')
+                            ->schema([
+                                Forms\Components\TextInput::make('credentials.access_token')
+                                    ->label('Access Token (Bearer Secret)')
+                                    ->password()
+                                    ->revealable()
+                                    ->helperText('Bearer access token from HyperPay Merchant Portal.')
+                                    ->columnSpanFull(),
+
+                                Forms\Components\TextInput::make('credentials.entity_id_mada')
+                                    ->label('Entity ID - Mada')
+                                    ->helperText('Entity ID specifically for Saudi Mada cards.')
+                                    ->placeholder('8a8294174b7e...'),
+
+                                Forms\Components\TextInput::make('credentials.entity_id_visa_master')
+                                    ->label('Entity ID - Visa / Mastercard')
+                                    ->helperText('Entity ID for standard Credit & Debit cards.')
+                                    ->placeholder('8a8294184b7e...'),
+
+                                Forms\Components\TextInput::make('credentials.entity_id_applepay')
+                                    ->label('Entity ID - Apple Pay')
+                                    ->helperText('Entity ID for Apple Pay Web processing.')
+                                    ->placeholder('8a8294194b7e...'),
+
+                                Forms\Components\TextInput::make('credentials.entity_id_stcpay')
+                                    ->label('Entity ID - STC Pay')
+                                    ->helperText('Optional Entity ID for STC Pay mobile wallet.')
+                                    ->placeholder('8a82941a4b7e...'),
+                            ]),
+
+                        // 2. Tabby Credentials
+                        Forms\Components\Grid::make(2)
+                            ->visible(fn (?PaymentGateway $record) => $record?->code === 'tabby')
+                            ->schema([
+                                Forms\Components\TextInput::make('credentials.public_key')
+                                    ->label('Tabby Public Key (pk_...)')
+                                    ->placeholder('pk_test_... or pk_live_...')
+                                    ->helperText('Used for frontend installment promo snippets.'),
+
+                                Forms\Components\TextInput::make('credentials.merchant_code')
+                                    ->label('Merchant Code')
+                                    ->placeholder('grassflorist')
+                                    ->helperText('Your registered merchant identifier in Tabby.'),
+
+                                Forms\Components\TextInput::make('credentials.secret_key')
+                                    ->label('Tabby Secret Key (sk_...)')
+                                    ->password()
+                                    ->revealable()
+                                    ->placeholder('sk_test_... or sk_live_...')
+                                    ->helperText('Used strictly on backend server-to-server calls.')
+                                    ->columnSpanFull(),
+                            ]),
+
+                        // 3. Tamara Credentials
+                        Forms\Components\Grid::make(2)
+                            ->visible(fn (?PaymentGateway $record) => $record?->code === 'tamara')
+                            ->schema([
+                                Forms\Components\TextInput::make('credentials.api_token')
+                                    ->label('Tamara API Token')
+                                    ->password()
+                                    ->revealable()
+                                    ->helperText('Bearer API token from Tamara Partners Portal.')
+                                    ->columnSpanFull(),
+
+                                Forms\Components\TextInput::make('credentials.notification_token')
+                                    ->label('Webhook / Notification Key')
+                                    ->password()
+                                    ->revealable()
+                                    ->helperText('Secret key used to verify Tamara webhook events.'),
+
+                                Forms\Components\TextInput::make('credentials.public_key')
+                                    ->label('Public Key')
+                                    ->helperText('Public key for Tamara promotional widgets.'),
+                            ]),
+
+                        // 4. PayPal Credentials
+                        Forms\Components\Grid::make(2)
+                            ->visible(fn (?PaymentGateway $record) => $record?->code === 'paypal')
+                            ->schema([
+                                Forms\Components\TextInput::make('credentials.client_id')
+                                    ->label('PayPal Client ID')
+                                    ->placeholder('AYb8... or Ab_...')
+                                    ->helperText('Client ID from PayPal Developer Dashboard.')
+                                    ->columnSpanFull(),
+
+                                Forms\Components\TextInput::make('credentials.client_secret')
+                                    ->label('PayPal Client Secret')
+                                    ->password()
+                                    ->revealable()
+                                    ->placeholder('EC... or EL...')
+                                    ->helperText('Secret key from PayPal Developer App.')
+                                    ->columnSpanFull(),
+
+                                Forms\Components\TextInput::make('credentials.webhook_id')
+                                    ->label('PayPal Webhook ID')
+                                    ->placeholder('WH-...')
+                                    ->helperText('Webhook ID created in PayPal dashboard to verify events.')
+                                    ->columnSpanFull(),
+                            ]),
                     ]),
 
                 Forms\Components\Section::make('Order Limits & Surcharges')
