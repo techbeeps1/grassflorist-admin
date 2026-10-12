@@ -118,6 +118,15 @@ class CartController extends Controller
                 }
             }
 
+            // Format full image URL
+            if (!empty($item->image)) {
+                $rawImg = (string) $item->image;
+                if (!str_starts_with($rawImg, 'http://') && !str_starts_with($rawImg, 'https://')) {
+                    $cleanImg = ltrim(preg_replace('/^\/?storage\/?/', '', $rawImg), '/');
+                    $item->image = asset('storage/' . $cleanImg);
+                }
+            }
+
             // Real-time In-Stock Validation
             $availableStock = (int) ($item->stock_quantity ?? 0);
             $isOutOfStock = ($availableStock <= 0) || !$item->is_visible;
