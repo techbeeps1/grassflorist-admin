@@ -72,10 +72,23 @@ class HomePageController extends Controller
             $catImgUrl = str_starts_with($catImg, 'http') ? $catImg : asset('storage/' . ltrim($catImg, '/'));
         }
 
+        $nameAr = $cat->getTranslation('name', 'ar') ?: (is_array($cat->name) ? ($cat->name['ar'] ?? '') : (is_string($cat->name) ? $cat->name : ''));
+        $nameEn = $cat->getTranslation('name', 'en') ?: (is_array($cat->name) ? ($cat->name['en'] ?? '') : (is_string($cat->name) ? $cat->name : ''));
+        if (empty($nameAr)) $nameAr = $nameEn;
+        if (empty($nameEn)) $nameEn = $nameAr;
+
         return [
             'id' => $cat->id,
-            'name' => $cat->getTranslation('name', $locale) ?: (is_array($cat->name) ? ($cat->name[$locale] ?? reset($cat->name)) : $cat->name),
+            'name' => [
+                'ar' => $nameAr,
+                'en' => $nameEn,
+            ],
+            'name_ar' => $nameAr,
+            'name_en' => $nameEn,
+            'name_text' => $locale === 'ar' ? ($nameAr ?: $nameEn) : ($nameEn ?: $nameAr),
             'slug' => ($locale === 'ar' && filled($cat->slug_ar)) ? $cat->slug_ar : $cat->slug,
+            'slug_ar' => $cat->slug_ar ?: $cat->slug,
+            'slug_en' => $cat->slug,
             'image' => $catImgUrl ?: $catImg,
         ];
     }

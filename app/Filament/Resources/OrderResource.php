@@ -736,6 +736,11 @@ class OrderResource extends Resource
                                                         </thead>
                                                         <tbody>';
                                                 
+                                                $totalItems = $items->sum('quantity');
+                                                $totalAmount = (float)$items->sum(function ($item) {
+                                                    return ($item->quantity ?? 1) * ($item->price ?? 0);
+                                                });
+
                                                 $counter = 1;
                                                 foreach ($items as $item) {
                                                     $productName = $item->product
@@ -753,7 +758,14 @@ class OrderResource extends Resource
                                                     }
 
                                                     $subtotal = ($item->quantity ?? 1) * ($item->price ?? 0);
-                                                    $itemVat = (float)($item->tax ?? ($subtotal * 0.15));
+                                                    $itemTax = (float)($item->tax ?? 0);
+                                                    if ($itemTax > 0) {
+                                                        $itemVat = $itemTax;
+                                                    } elseif ($record && (float)($record->tax_amount ?? 0) > 0 && $totalAmount > 0) {
+                                                        $itemVat = round(((float)$record->tax_amount * ($subtotal / $totalAmount)), 2);
+                                                    } else {
+                                                        $itemVat = round($subtotal * 0.15, 2);
+                                                    }
 
                                                     $html .= '<tr>
                                                         <td style="text-align: left;">' . $counter . '</td>
@@ -775,11 +787,6 @@ class OrderResource extends Resource
                                                 }
                                                 
                                                 $html .= '</tbody></table></div>';
-                                                
-                                                $totalItems = $items->sum('quantity');
-                                                $totalAmount = $items->sum(function ($item) {
-                                                    return ($item->quantity ?? 1) * ($item->price ?? 0);
-                                                });
                                                 
                                                 if ($isVendor) {
                                                     $commissionRate = $vendor->commission_rate;

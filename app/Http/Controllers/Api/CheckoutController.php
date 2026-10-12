@@ -266,6 +266,9 @@ class CheckoutController extends Controller
                 $vendorId = reset($vendorId);
             }
 
+            $itemSubtotal = $product_price * $item->quantity;
+            $itemTax = round($itemSubtotal * 0.15, 2);
+
             DB::table('order_items')->insert([
                 'order_id' => $order->id,
                 'product_id' => $item->product_id,
@@ -273,8 +276,11 @@ class CheckoutController extends Controller
                 'product_image' => is_string($prodImage) ? $prodImage : '',
                 'price' => $product_price,
                 'quantity' => $item->quantity,
+                'unit_price' => $product_price,
+                'tax' => $itemTax,
+                'subtotal' => $itemSubtotal,
                 'product_weight' => $prodWeight !== null ? (string)$prodWeight : null,
-                'total' => $product_price * $item->quantity,
+                'total' => $itemSubtotal,
                 'payment_method'=> $request->payment_method,
                 'vendor_id' => $vendorId,
                 'created_at' => now(),
@@ -481,6 +487,9 @@ class CheckoutController extends Controller
                     $vendorId = reset($vendorId);
                 }
 
+                $itemSubtotal = $product_price * $item->quantity;
+                $itemTax = round($itemSubtotal * 0.15, 2);
+
                 DB::table('order_items')->insert([
                     'order_id' => $order->id,
                     'product_id' => $item->product_id,
@@ -488,8 +497,11 @@ class CheckoutController extends Controller
                     'product_image' => is_string($prodImage) ? $prodImage : '',
                     'price' => $product_price,
                     'quantity' => $item->quantity,
+                    'unit_price' => $product_price,
+                    'tax' => $itemTax,
+                    'subtotal' => $itemSubtotal,
                     'product_weight' => $prodWeight !== null ? (string)$prodWeight : null,
-                    'total' => $product_price * $item->quantity,
+                    'total' => $itemSubtotal,
                     'payment_method' => $paymentMethod,
                     'vendor_id' => is_numeric($vendorId) ? (int)$vendorId : null,
                     'created_at' => now(),

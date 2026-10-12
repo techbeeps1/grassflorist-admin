@@ -15,32 +15,40 @@ class ProductController extends Controller
      */
     protected function getLocale(Request $request): string
     {
-        // 1. Explicit English check
-        if (
-            $request->routeIs('*en*') ||
-            $request->segment(1) === 'en' ||
-            $request->segment(2) === 'en' ||
-            $request->query('locale') === 'en' ||
-            $request->query('lang') === 'en' ||
-            $request->header('X-Locale') === 'en' ||
-            str_starts_with((string) $request->header('Accept-Language', ''), 'en')
-        ) {
+        // 1. Explicit URL check
+        if ($request->routeIs('*en*') || $request->segment(1) === 'en' || $request->segment(2) === 'en') {
             return 'en';
         }
-
-        // 2. Explicit Arabic check
-        if (
-            $request->routeIs('*ar*') ||
-            $request->segment(1) === 'ar' ||
-            $request->segment(2) === 'ar' ||
-            $request->query('locale') === 'ar' ||
-            $request->query('lang') === 'ar' ||
-            $request->header('X-Locale') === 'ar'
-        ) {
+        if ($request->routeIs('*ar*') || $request->segment(1) === 'ar' || $request->segment(2) === 'ar') {
             return 'ar';
         }
 
-        // 3. Default for Grass Florist is Arabic ('ar')
+        // 2. Explicit query parameter (?locale=... or ?lang=...)
+        if ($request->query('locale') === 'en' || $request->query('lang') === 'en') {
+            return 'en';
+        }
+        if ($request->query('locale') === 'ar' || $request->query('lang') === 'ar') {
+            return 'ar';
+        }
+
+        // 3. Explicit custom header X-Locale
+        if ($request->header('X-Locale') === 'en') {
+            return 'en';
+        }
+        if ($request->header('X-Locale') === 'ar') {
+            return 'ar';
+        }
+
+        // 4. Accept-Language header fallback
+        $acceptLang = (string) $request->header('Accept-Language', '');
+        if (str_starts_with($acceptLang, 'en')) {
+            return 'en';
+        }
+        if (str_starts_with($acceptLang, 'ar')) {
+            return 'ar';
+        }
+
+        // 5. Default for Grass Florist is Arabic ('ar')
         return app()->getLocale() ?: 'ar';
     }
 
@@ -66,13 +74,11 @@ class ProductController extends Controller
         $mrp = (float) ($product->mrp ?: $product->price);
         $quantity = (int) $product->quantity;
 
-        $name = $product->getTranslation('name', $locale);
-        if (empty($name) && is_array($product->name)) {
-            $name = $product->name[$locale] ?? reset($product->name);
-        }
-        if (empty($name)) {
-            $name = $product->name;
-        }
+        $nameAr = $product->getTranslation('name', 'ar') ?: (is_array($product->name) ? ($product->name['ar'] ?? '') : (is_string($product->name) ? $product->name : ''));
+        $nameEn = $product->getTranslation('name', 'en') ?: (is_array($product->name) ? ($product->name['en'] ?? '') : (is_string($product->name) ? $product->name : ''));
+        if (empty($nameAr)) $nameAr = $nameEn;
+        if (empty($nameEn)) $nameEn = $nameAr;
+        $name = $locale === 'ar' ? ($nameAr ?: $nameEn) : ($nameEn ?: $nameAr);
 
         $slug = ($locale === 'ar' && filled($product->slug_ar)) ? $product->slug_ar : $product->slug;
 
@@ -92,11 +98,21 @@ class ProductController extends Controller
             $cidInt = (int) $cid;
             if (isset($categoriesCache[$cidInt])) {
                 $c = $categoriesCache[$cidInt];
-                $cName = $c->getTranslation('name', $locale) ?: (is_array($c->name) ? ($c->name[$locale] ?? reset($c->name)) : $c->name);
+                $cNameAr = $c->getTranslation('name', 'ar') ?: (is_array($c->name) ? ($c->name['ar'] ?? '') : (is_string($c->name) ? $c->name : ''));
+                $cNameEn = $c->getTranslation('name', 'en') ?: (is_array($c->name) ? ($c->name['en'] ?? '') : (is_string($c->name) ? $c->name : ''));
+                if (empty($cNameAr)) $cNameAr = $cNameEn;
+                if (empty($cNameEn)) $cNameEn = $cNameAr;
+                $cName = $locale === 'ar' ? ($cNameAr ?: $cNameEn) : ($cNameEn ?: $cNameAr);
                 $cSlug = ($locale === 'ar' && filled($c->slug_ar)) ? $c->slug_ar : $c->slug;
                 $formattedCategories[] = [
                     'id' => $c->id,
-                    'name' => $cName,
+                    'name' => [
+                        'ar' => $cNameAr,
+                        'en' => $cNameEn,
+                    ],
+                    'name_ar' => $cNameAr,
+                    'name_en' => $cNameEn,
+                    'name_text' => $cName,
                     'slug' => $cSlug,
                     'slug_en' => $c->slug,
                     'slug_ar' => $c->slug_ar,
@@ -108,8 +124,16 @@ class ProductController extends Controller
 
         return [
             'id' => $product->id,
-            'name' => $name,
+            'name' => [
+                'ar' => $nameAr,
+                'en' => $nameEn,
+            ],
+            'name_ar' => $nameAr,
+            'name_en' => $nameEn,
+            'name_text' => $name,
             'slug' => $slug,
+            'slug_ar' => $product->slug_ar ?: $product->slug,
+            'slug_en' => $product->slug,
             'price' => $price,
             'mrp' => $mrp,
             'in_stock' => $quantity > 0,
@@ -141,10 +165,22 @@ class ProductController extends Controller
             if ($catImg) {
                 $catImgUrl = str_starts_with($catImg, 'http') ? $catImg : asset('storage/' . ltrim($catImg, '/'));
             }
+            $cNameAr = $cat->getTranslation('name', 'ar') ?: (is_array($cat->name) ? ($cat->name['ar'] ?? '') : (is_string($cat->name) ? $cat->name : ''));
+            $cNameEn = $cat->getTranslation('name', 'en') ?: (is_array($cat->name) ? ($cat->name['en'] ?? '') : (is_string($cat->name) ? $cat->name : ''));
+            if (empty($cNameAr)) $cNameAr = $cNameEn;
+            if (empty($cNameEn)) $cNameEn = $cNameAr;
             return [
                 'id' => $cat->id,
-                'name' => $cat->getTranslation('name', $locale) ?: (is_array($cat->name) ? ($cat->name[$locale] ?? reset($cat->name)) : $cat->name),
+                'name' => [
+                    'ar' => $cNameAr,
+                    'en' => $cNameEn,
+                ],
+                'name_ar' => $cNameAr,
+                'name_en' => $cNameEn,
+                'name_text' => $locale === 'ar' ? ($cNameAr ?: $cNameEn) : ($cNameEn ?: $cNameAr),
                 'slug' => ($locale === 'ar' && filled($cat->slug_ar)) ? $cat->slug_ar : $cat->slug,
+                'slug_ar' => $cat->slug_ar ?: $cat->slug,
+                'slug_en' => $cat->slug,
                 'image' => $catImgUrl ?: $catImg,
             ];
         })->values()->toArray();
@@ -168,39 +204,45 @@ class ProductController extends Controller
         $quantity = (int) $product->quantity;
 
         // Localized fields
-        $name = $product->getTranslation('name', $locale);
-        if (empty($name) && is_array($product->name)) {
-            $name = $product->name[$locale] ?? reset($product->name);
-        }
-        if (empty($name)) {
-            $name = $product->name;
-        }
+        $nameAr = $product->getTranslation('name', 'ar') ?: (is_array($product->name) ? ($product->name['ar'] ?? '') : (is_string($product->name) ? $product->name : ''));
+        $nameEn = $product->getTranslation('name', 'en') ?: (is_array($product->name) ? ($product->name['en'] ?? '') : (is_string($product->name) ? $product->name : ''));
+        if (empty($nameAr)) $nameAr = $nameEn;
+        if (empty($nameEn)) $nameEn = $nameAr;
+        $name = $locale === 'ar' ? ($nameAr ?: $nameEn) : ($nameEn ?: $nameAr);
 
         $slug = ($locale === 'ar' && filled($product->slug_ar)) ? $product->slug_ar : $product->slug;
 
-        $subTitle = $product->getTranslation('sub_title', $locale);
-        if (empty($subTitle) && is_array($product->sub_title)) {
-            $subTitle = $product->sub_title[$locale] ?? '';
-        }
-        if (empty($subTitle)) {
-            $subTitle = is_string($product->sub_title) ? $product->sub_title : '';
-        }
+        $subTitleAr = $product->getTranslation('sub_title', 'ar') ?: (is_array($product->sub_title) ? ($product->sub_title['ar'] ?? '') : (is_string($product->sub_title) ? $product->sub_title : ''));
+        $subTitleEn = $product->getTranslation('sub_title', 'en') ?: (is_array($product->sub_title) ? ($product->sub_title['en'] ?? '') : (is_string($product->sub_title) ? $product->sub_title : ''));
+        $subTitle = $locale === 'ar' ? ($subTitleAr ?: $subTitleEn) : ($subTitleEn ?: $subTitleAr);
 
-        $description = $product->getTranslation('description', $locale);
-        if (empty($description) && is_array($product->description)) {
-            $description = $product->description[$locale] ?? '';
-        }
-        if (empty($description)) {
-            $description = is_string($product->description) ? $product->description : '';
-        }
+        $descriptionAr = $product->getTranslation('description', 'ar') ?: (is_array($product->description) ? ($product->description['ar'] ?? '') : (is_string($product->description) ? $product->description : ''));
+        $descriptionEn = $product->getTranslation('description', 'en') ?: (is_array($product->description) ? ($product->description['en'] ?? '') : (is_string($product->description) ? $product->description : ''));
+        $description = $locale === 'ar' ? ($descriptionAr ?: $descriptionEn) : ($descriptionEn ?: $descriptionAr);
 
         return [
             'id' => $product->id,
             'sku' => $product->sku,
-            'name' => $name,
+            'name' => [
+                'ar' => $nameAr,
+                'en' => $nameEn,
+            ],
+            'name_ar' => $nameAr,
+            'name_en' => $nameEn,
+            'name_text' => $name,
             'slug' => $slug,
-            'sub_title' => $subTitle,
-            'description' => $description,
+            'slug_ar' => $product->slug_ar ?: $product->slug,
+            'slug_en' => $product->slug,
+            'sub_title' => [
+                'ar' => $subTitleAr,
+                'en' => $subTitleEn,
+            ],
+            'sub_title_text' => $subTitle,
+            'description' => [
+                'ar' => $descriptionAr,
+                'en' => $descriptionEn,
+            ],
+            'description_text' => $description,
             'price' => $price,
             'mrp' => $mrp,
             'quantity' => $quantity,

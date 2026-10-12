@@ -11,33 +11,44 @@ class CategoryController extends Controller
 {
     protected function getLocale(Request $request): string
     {
-        if (
-            $request->routeIs('*en*') ||
-            $request->segment(1) === 'en' ||
-            $request->segment(2) === 'en' ||
-            $request->query('locale') === 'en' ||
-            $request->query('lang') === 'en' ||
-            $request->header('X-Locale') === 'en' ||
-            str_starts_with((string) $request->header('Accept-Language', ''), 'en')
-        ) {
+        // 1. Explicit URL route or segment check
+        if ($request->routeIs('*en*') || $request->segment(1) === 'en' || $request->segment(2) === 'en') {
             return 'en';
         }
-
-        if (
-            $request->routeIs('*ar*') ||
-            $request->segment(1) === 'ar' ||
-            $request->segment(2) === 'ar' ||
-            $request->query('locale') === 'ar' ||
-            $request->query('lang') === 'ar' ||
-            $request->header('X-Locale') === 'ar'
-        ) {
+        if ($request->routeIs('*ar*') || $request->segment(1) === 'ar' || $request->segment(2) === 'ar') {
             return 'ar';
         }
 
+        // 2. Explicit query parameter (?lang=... or ?locale=...)
+        if ($request->query('locale') === 'en' || $request->query('lang') === 'en') {
+            return 'en';
+        }
+        if ($request->query('locale') === 'ar' || $request->query('lang') === 'ar') {
+            return 'ar';
+        }
+
+        // 3. Explicit custom header X-Locale
+        if ($request->header('X-Locale') === 'en') {
+            return 'en';
+        }
+        if ($request->header('X-Locale') === 'ar') {
+            return 'ar';
+        }
+
+        // 4. Accept-Language header fallback
+        $acceptLang = (string) $request->header('Accept-Language', '');
+        if (str_starts_with($acceptLang, 'en')) {
+            return 'en';
+        }
+        if (str_starts_with($acceptLang, 'ar')) {
+            return 'ar';
+        }
+
+        // Default for Grass Florist Saudi Arabia is Arabic
         return app()->getLocale() ?: 'ar';
     }
 
-    public function formatCategory(Category $category, string $locale = 'en'): array
+    public function formatCategory(Category $category, string $locale = 'ar'): array
     {
         $catImg = $category->cat_image;
         $catImgUrl = null;
@@ -50,11 +61,46 @@ class CategoryController extends Controller
             $children = $category->child->map(fn ($c) => $this->formatCategory($c, $locale))->values()->toArray();
         }
 
+        $nameAr = $category->getTranslation('name', 'ar');
+        if (empty($nameAr) && is_array($category->name)) {
+            $nameAr = $category->name['ar'] ?? '';
+        }
+        if (empty($nameAr)) {
+            $nameAr = is_string($category->name) ? $category->name : '';
+        }
+
+        $nameEn = $category->getTranslation('name', 'en');
+        if (empty($nameEn) && is_array($category->name)) {
+            $nameEn = $category->name['en'] ?? '';
+        }
+        if (empty($nameEn)) {
+            $nameEn = is_string($category->name) ? $category->name : '';
+        }
+
+        // Fallback for categories where database only stored one language
+        if (empty($nameAr)) $nameAr = $nameEn;
+        if (empty($nameEn)) $nameEn = $nameAr;
+
+        $descAr = $category->getTranslation('description', 'ar') ?: (is_array($category->description) ? ($category->description['ar'] ?? '') : (is_string($category->description) ? $category->description : ''));
+        $descEn = $category->getTranslation('description', 'en') ?: (is_array($category->description) ? ($category->description['en'] ?? '') : (is_string($category->description) ? $category->description : ''));
+
         return [
             'id' => $category->id,
-            'name' => $category->getTranslation('name', $locale) ?: $category->name,
+            'name' => [
+                'ar' => $nameAr,
+                'en' => $nameEn,
+            ],
+            'name_ar' => $nameAr,
+            'name_en' => $nameEn,
+            'name_text' => $locale === 'ar' ? ($nameAr ?: $nameEn) : ($nameEn ?: $nameAr),
             'slug' => ($locale === 'ar' && filled($category->slug_ar)) ? $category->slug_ar : $category->slug,
-            'description' => $category->getTranslation('description', $locale) ?: $category->description,
+            'slug_ar' => $category->slug_ar ?: $category->slug,
+            'slug_en' => $category->slug,
+            'description' => [
+                'ar' => $descAr,
+                'en' => $descEn,
+            ],
+            'description_text' => $locale === 'ar' ? ($descAr ?: $descEn) : ($descEn ?: $descAr),
             'image' => $catImgUrl ?: $catImg,
             'image_path' => $catImg,
             'is_visible' => (bool) $category->is_visible,

@@ -16,8 +16,8 @@ class NewsletterSubscriberResource extends Resource
 {
     protected static ?string $model = NewsletterSubscriber::class;
     protected static ?string $navigationIcon = 'heroicon-o-envelope-open';
-    protected static ?string $navigationGroup = null;
-    protected static ?int $navigationSort = 6;
+    protected static ?string $navigationGroup = 'Subscribers';
+    protected static ?int $navigationSort = 1;
     protected static ?string $navigationLabel = 'Subscribers';
     protected static ?string $modelLabel = 'Subscriber';
     protected static ?string $pluralModelLabel = 'Subscribers';
