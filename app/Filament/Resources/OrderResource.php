@@ -189,6 +189,7 @@ class OrderResource extends Resource
                                                 Select::make('status')
                                                     ->label('Order Status')
                                                     ->options([
+                                                        "pending" => "Pending",
                                                         "pending_payment" => "Pending payment",
                                                         "processing" => "Processing",
                                                         "printed" => "Printed",
@@ -201,7 +202,7 @@ class OrderResource extends Resource
                                                     ])
                                                     ->required()
                                                     ->live()
-                                                    ->native(false),
+                                                    ->native(true),
 
                                                 Select::make('order_language')
                                                     ->label('Order Language (لغة إشعارات الطلب)')
@@ -211,7 +212,7 @@ class OrderResource extends Resource
                                                     ])
                                                     ->default('ar')
                                                     ->helperText('Language used for customer emails and SMS updates for this order.')
-                                                    ->native(false),
+                                                    ->native(true),
 
                                                 Placeholder::make('cancelled_by_display')
                                                     ->label('Cancelled By')
@@ -350,12 +351,13 @@ class OrderResource extends Resource
                                                     ->label('Payment Status')
                                                     ->options([
                                                         "pending" => "Pending",
+                                                        "payment_pending" => "Payment Pending",
                                                         "paid" => "Paid",
                                                         "failed" => "Failed",
                                                         "refunded" => "Refunded",
                                                     ])
                                                     ->required()
-                                                    ->native(false),
+                                                    ->native(true),
 
                                                 Placeholder::make('payment_info_summary')
                                                     ->label('Payment Timestamp & IP')
@@ -1567,6 +1569,7 @@ class OrderResource extends Resource
                             Select::make('payment_status')
                                 ->options([
                                     "pending"=>"Pending",
+                                    "payment_pending"=>"Payment Pending",
                                     "paid"=>"Paid",
                                     "failed"=>"Failed",
                                     "refunded"=>"Refunded",

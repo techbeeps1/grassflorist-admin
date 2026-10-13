@@ -66,6 +66,7 @@
             str_contains($methodRaw, 'tabby') => 'تابي',
             str_contains($methodRaw, 'tamara') => 'تمارا',
             str_contains($methodRaw, 'cod') => 'الدفع عند الاستلام',
+            str_contains($methodRaw, 'paypal') => 'باي بال (PayPal)',
             str_contains($methodRaw, 'card') || str_contains($methodRaw, 'visa') || str_contains($methodRaw, 'master') => 'بطاقة ائتمانية',
             default => !empty($order->payment_method) ? $order->payment_method : 'ابل باي',
         };
@@ -471,8 +472,16 @@
                 <!-- Receiver Details -->
                 <td style="width: 50%; padding: 10px 14px;">
                     <div class="box-heading">Receiver details:</div>
-                    <div class="meta-row"><strong>First name:</strong> {{ $order->recipient_name ?: $order->first_name }}</div>
-                    <div class="meta-row"><strong>Last name:</strong> {{ $order->recipient_last_name ?: $order->last_name }}</div>
+                    @php
+                        $recFullName = trim((string)($order->recipient_name ?: trim(($order->first_name ?? '') . ' ' . ($order->last_name ?? ''))));
+                        $recParts = explode(' ', $recFullName, 2);
+                        $recFirst = $recParts[0] ?? $recFullName;
+                        $recLast = $recParts[1] ?? '';
+                    @endphp
+                    <div class="meta-row"><strong>First name:</strong> {{ $recFirst }}</div>
+                    @if(!empty($recLast))
+                    <div class="meta-row"><strong>Last name:</strong> {{ $recLast }}</div>
+                    @endif
                     <div class="meta-row"><strong>Phone number:</strong> {{ $order->recipient_phone ?: $order->customer_phone }}</div>
                     <div class="meta-row"><strong>Shipping address:</strong> {{ $shippingAddressFormatted }}</div>
                 </td>
@@ -504,18 +513,30 @@
                 @forelse($orderItems as $item)
                     @php
                         $prod = $item->product;
-                        $thumb = $prod?->thumbnail_image ? asset('storage/' . $prod->thumbnail_image) : null;
                         
-                        // Safe SKU or Name
-                        $prodDisplay = $prod?->sku;
-                        if (empty($prodDisplay)) {
-                            $rawProdName = $item->product_name ?: ($prod ? $prod->name : null);
-                            if (is_array($rawProdName)) {
-                                $prodDisplay = $rawProdName['en'] ?? $rawProdName['ar'] ?? reset($rawProdName);
-                            } else {
-                                $prodDisplay = (string)($rawProdName ?: 'G408');
+                        // Robust Product Image URL Resolution
+                        $imgCandidate = $item->product_image ?: ($prod?->image ?: $prod?->thumbnail_image);
+                        $thumb = null;
+                        if (!empty($imgCandidate)) {
+                            if (is_array($imgCandidate)) {
+                                $imgCandidate = reset($imgCandidate);
                             }
+                            $thumb = function_exists('storage_media_url') ? storage_media_url($imgCandidate) : asset('storage/' . ltrim((string)$imgCandidate, '/'));
                         }
+                        if (empty($thumb) && !empty($prod?->image_url)) {
+                            $thumb = $prod->image_url;
+                        }
+                        
+                        // Prioritize Actual Product Name/Code (e.g. G017) over numeric WooCommerce SKU (e.g. 88)
+                        $rawProdName = $item->product_name ?: ($prod ? $prod->name : null);
+                        if (is_array($rawProdName)) {
+                            $prodTitle = $rawProdName['en'] ?? $rawProdName['ar'] ?? reset($rawProdName);
+                        } else {
+                            $prodTitle = (string)$rawProdName;
+                        }
+
+                        $prodDisplay = !empty($prodTitle) ? $prodTitle : ($prod?->sku ?: 'G408');
+                        $skuDisplay = (!empty($prod?->sku) && (string)$prod->sku !== (string)$prodDisplay) ? $prod->sku : null;
 
                         // Safe Category
                         $rawCat = $prod?->category?->name ?: ($prod?->categories?->first()?->name ?: null);
@@ -533,13 +554,17 @@
                     <tr>
                         <td>
                             @if($thumb)
-                                <img src="{{ $thumb }}" class="prod-thumb" alt="Product">
+                                <img src="{{ $thumb }}" class="prod-thumb" alt="Product" onerror="this.onerror=null; this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-flex';">
+                                <div style="display: none; width: 48px; height: 48px; background: #f3f4f6; border-radius: 4px; align-items: center; justify-content: center; font-size: 10px; color: #9ca3af; border: 1px solid #d1d5db;">Flower</div>
                             @else
                                 <div style="width: 48px; height: 48px; background: #f3f4f6; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; color: #9ca3af; border: 1px solid #d1d5db;">Flower</div>
                             @endif
                         </td>
                         <td>
                             <div class="prod-code">{{ $prodDisplay }}</div>
+                            @if($skuDisplay)
+                                <div style="font-size: 11px; color: #6b7280; font-weight: normal;">SKU: {{ $skuDisplay }}</div>
+                            @endif
                             @if(!empty($item->variation_details))
                                 <div style="font-size: 10px; color: #6b7280;">{{ $item->variation_details }}</div>
                             @endif
@@ -576,7 +601,10 @@
             $fmtTax = (floor($tax) == $tax) ? number_format($tax, 0) : number_format($tax, 2);
             $fmtShipping = (floor($shipping) == $shipping) ? number_format($shipping, 0) : number_format($shipping, 2);
             $fmtTotal = (floor($total) == $total) ? number_format($total, 0) : number_format($total, 2);
-            $shippingMethodTitle = $order->shipping_method_name ?: 'Delivery rate inside Jeddah';
+            $shippingMethodTitle = $order->shipping_method ?: ($order->shipping_method_name ?: 'Delivery rate inside Jeddah');
+            if (str_contains(strtolower($shippingMethodTitle), 'jeddah')) {
+                $shippingMethodTitle = 'توصيل داخل جدة (Delivery rate inside Jeddah)';
+            }
         @endphp
         <table class="totals-table">
             <tr>
@@ -608,7 +636,7 @@
             <tr style="background: #f0fdf4; font-weight: 700;">
                 <td class="tot-en" style="color: #15803d;">Paid in USD</td>
                 <td class="tot-ar" style="color: #15803d;">المبلغ المدفوع بالدولار</td>
-                <td class="tot-val" style="color: #15803d; font-size: 13px;">${{ number_format((float)$order->currency_amount, 2) }} USD (Rate: 1 SAR = {{ number_format((float)($order->exchange_rate ?? 0.2667), 4) }} USD)</td>
+                <td class="tot-val" style="color: #15803d; font-size: 13px;">${{ number_format((float)$order->currency_amount, 2) }} USD</td>
             </tr>
             @endif
         </table>

@@ -17,6 +17,12 @@ class SubscriptionSetting extends Model
         'allowed_frequencies' => 'array',
         'allowed_durations' => 'array',
         'customer_notes_enabled' => 'boolean',
+        'subscription_product_ids' => 'array',
+        'duration_discounts' => 'array',
+        'banner_title' => 'array',
+        'banner_subtitle' => 'array',
+        'perks' => 'array',
+        'how_it_works' => 'array',
     ];
 
     protected static function booted(): void

@@ -173,6 +173,22 @@ class SubscriptionService
             $shippingCode = $payload['shipping_method_code'] ?? null;
             $customDates = (array)($payload['custom_dates'] ?? []);
 
+            // 🛡️ Idempotency: Prevent duplicate subscriptions for the same initial order & product
+            if (!empty($payload['initial_order_id'])) {
+                $existing = Subscription::where('customer_id', $customerId)
+                    ->where('product_id', $productId)
+                    ->where(function ($q) use ($payload) {
+                        $q->where('metadata->initial_order_id', (int)$payload['initial_order_id'])
+                          ->orWhere('metadata->initial_order_id', (string)$payload['initial_order_id']);
+                    })
+                    ->first();
+
+                if ($existing) {
+                    \Log::info("Idempotent check: Subscription #{$existing->subscription_number} already exists for initial_order_id {$payload['initial_order_id']}. Reusing existing record.");
+                    return $existing;
+                }
+            }
+
             $pricing = $this->calculatePricing(
                 $productId,
                 $quantity,

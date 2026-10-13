@@ -188,7 +188,7 @@ class Product extends Model
         }
         return str_starts_with($this->image, 'http')
             ? $this->image
-            : asset('storage/' . $this->image);
+            : storage_media_url($this->image);
     }
 
     // Helper: Full Gallery Images URLs
@@ -199,7 +199,7 @@ class Product extends Model
             return [];
         }
         return array_map(function ($img) {
-            return str_starts_with($img, 'http') ? $img : asset('storage/' . $img);
+            return str_starts_with($img, 'http') ? $img : storage_media_url($img);
         }, $gallery);
     }
 

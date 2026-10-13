@@ -548,31 +548,76 @@ class CheckoutController extends Controller
                     if ($customerId) {
                         try {
                             $subService = app(\App\Services\Subscriptions\SubscriptionService::class);
-                            $subscription = $subService->createSubscription($customerId, [
-                                'product_id' => $item->product_id,
-                                'quantity' => $item->quantity,
-                                'frequency' => $itemMeta['frequency'] ?? 'weekly',
-                                'duration_type' => $itemMeta['duration_type'] ?? 'until_cancelled',
-                                'start_date' => $deliveryDate,
-                                'delivery_time_slot' => $deliveryTime,
-                                'recipient_name' => $recipientName,
-                                'recipient_phone' => $recipientPhone,
-                                'address' => $order->address,
-                                'address_2' => $order->address_2,
-                                'city' => $order->city ?: 'Jeddah',
-                                'district' => $order->district,
-                                'state' => $order->state,
-                                'country' => $order->country ?: 'Saudi Arabia',
-                                'zip_code' => $order->zip_code,
-                                'location_link' => $order->location_link,
-                                'card_message' => $deliveryMessage,
-                                'payment_gateway' => $paymentMethod,
-                                'status' => $isCod ? 'active' : 'pending_payment',
-                                'initial_order_id' => $order->id,
-                            ]);
+
+                            // 🔍 Deduplication: Check if a subscription already exists for this order & product
+                            $existingSub = null;
+
+                            // 1. Direct check: Order's current subscription_id
+                            if (!empty($order->subscription_id)) {
+                                $candidate = \App\Models\Subscription::find($order->subscription_id);
+                                if ($candidate && (int)$candidate->product_id === (int)$item->product_id) {
+                                    $existingSub = $candidate;
+                                }
+                            }
+
+                            // 2. Metadata initial_order_id check
+                            if (!$existingSub) {
+                                $existingSub = \App\Models\Subscription::where('customer_id', $customerId)
+                                    ->where('product_id', $item->product_id)
+                                    ->where(function ($q) use ($order) {
+                                        $q->where('metadata->initial_order_id', (int)$order->id)
+                                          ->orWhere('metadata->initial_order_id', (string)$order->id);
+                                    })
+                                    ->first();
+                            }
+
+                            // 3. SubscriptionDelivery link check
+                            if (!$existingSub) {
+                                $existingDel = \App\Models\SubscriptionDelivery::where('order_id', $order->id)->first();
+                                if ($existingDel && $existingDel->subscription && (int)$existingDel->subscription->product_id === (int)$item->product_id) {
+                                    $existingSub = $existingDel->subscription;
+                                }
+                            }
+
+                            if ($existingSub) {
+                                // Subscription already exists for this order — update details instead of creating a duplicate!
+                                $existingSub->update([
+                                    'quantity' => $item->quantity,
+                                    'frequency' => $itemMeta['frequency'] ?? $existingSub->frequency,
+                                    'duration_type' => $itemMeta['duration_type'] ?? $existingSub->duration_type,
+                                    'delivery_time_slot' => $deliveryTime ?: $existingSub->delivery_time_slot,
+                                    'payment_gateway' => $paymentMethod,
+                                    'gift_message' => $deliveryMessage ?: $existingSub->gift_message,
+                                ]);
+
+                                $subscription = $existingSub;
+                            } else {
+                                $subscription = $subService->createSubscription($customerId, [
+                                    'product_id' => $item->product_id,
+                                    'quantity' => $item->quantity,
+                                    'frequency' => $itemMeta['frequency'] ?? 'weekly',
+                                    'duration_type' => $itemMeta['duration_type'] ?? 'until_cancelled',
+                                    'start_date' => $deliveryDate,
+                                    'delivery_time_slot' => $deliveryTime,
+                                    'recipient_name' => $recipientName,
+                                    'recipient_phone' => $recipientPhone,
+                                    'address' => $order->address,
+                                    'address_2' => $order->address_2,
+                                    'city' => $order->city ?: 'Jeddah',
+                                    'district' => $order->district,
+                                    'state' => $order->state,
+                                    'country' => $order->country ?: 'Saudi Arabia',
+                                    'zip_code' => $order->zip_code,
+                                    'location_link' => $order->location_link,
+                                    'card_message' => $deliveryMessage,
+                                    'payment_gateway' => $paymentMethod,
+                                    'status' => $isCod ? 'active' : 'pending_payment',
+                                    'initial_order_id' => $order->id,
+                                ]);
+                            }
 
                             $firstDelivery = $subscription->deliveries()->orderBy('delivery_number', 'asc')->first() ?? $subscription->deliveries()->first();
-                            if ($firstDelivery) {
+                            if ($firstDelivery && (empty($firstDelivery->order_id) || $firstDelivery->order_id == $order->id)) {
                                 $firstDelivery->update([
                                     'order_id' => $order->id,
                                     'payment_status' => $isCod ? 'cod_pending' : 'pending',
@@ -599,7 +644,7 @@ class CheckoutController extends Controller
             if (!empty($createdSubIds)) {
                 $curMeta = is_array($order->meta_data) ? $order->meta_data : [];
                 $curMeta['has_subscription'] = true;
-                $curMeta['subscription_ids'] = $createdSubIds;
+                $curMeta['subscription_ids'] = array_values(array_unique($createdSubIds));
                 $order->update(['meta_data' => $curMeta]);
             }
 

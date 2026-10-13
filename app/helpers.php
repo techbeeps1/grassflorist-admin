@@ -146,3 +146,22 @@ if (! function_exists('zatca_qr_image_url')) {
     }
 }
 
+if (! function_exists('storage_media_url')) {
+    /**
+     * Generate storage URL for public media uploads.
+     * Uses MEDIA_URL if configured, otherwise falls back to public storage disk URL.
+     */
+    function storage_media_url(?string $path = null): ?string {
+        if (! $path) {
+            return null;
+        }
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
+            return $path;
+        }
+        $cleanPath = ltrim(preg_replace('#^/?storage/?#', '', $path), '/');
+        $mediaUrl = env('MEDIA_URL') ?: env('APP_URL', 'http://127.0.0.1:8000');
+        return rtrim($mediaUrl, '/') . '/storage/' . $cleanPath;
+    }
+}
+
+

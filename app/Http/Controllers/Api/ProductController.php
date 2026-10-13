@@ -61,13 +61,13 @@ class ProductController extends Controller
         $imagePath = $product->image;
         $imageUrl = null;
         if ($imagePath) {
-            $imageUrl = str_starts_with($imagePath, 'http') ? $imagePath : asset('storage/' . ltrim($imagePath, '/'));
+            $imageUrl = str_starts_with($imagePath, 'http') ? $imagePath : storage_media_url($imagePath);
         }
 
         $galleryUrls = [];
         foreach ((array) ($product->gallery ?? []) as $g) {
             if (empty($g)) continue;
-            $galleryUrls[] = str_starts_with($g, 'http') ? $g : asset('storage/' . ltrim($g, '/'));
+            $galleryUrls[] = str_starts_with($g, 'http') ? $g : storage_media_url($g);
         }
 
         $price = (float) $product->price;
@@ -194,14 +194,14 @@ class ProductController extends Controller
         $imagePath = $product->image;
         $imageUrl = null;
         if ($imagePath) {
-            $imageUrl = str_starts_with($imagePath, 'http') ? $imagePath : asset('storage/' . ltrim($imagePath, '/'));
+            $imageUrl = str_starts_with($imagePath, 'http') ? $imagePath : storage_media_url($imagePath);
         }
 
         // Gallery Images
         $galleryUrls = [];
         foreach ((array) ($product->gallery ?? []) as $g) {
             if (empty($g)) continue;
-            $galleryUrls[] = str_starts_with($g, 'http') ? $g : asset('storage/' . ltrim($g, '/'));
+            $galleryUrls[] = str_starts_with($g, 'http') ? $g : storage_media_url($g);
         }
 
         $price = (float) $product->price;

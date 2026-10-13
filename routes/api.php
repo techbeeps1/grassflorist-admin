@@ -121,6 +121,10 @@ Route::prefix('my-account')->group(function () {
     Route::post('/subscriptions/{id}/retry-payment', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'retryPayment']);
 });
 
+// Subscription Public Deals & Plans Endpoints
+Route::get('/subscription-plans', [\App\Http\Controllers\Api\SubscriptionPlanController::class, 'index']);
+Route::get('/subscription-plans/{slug}', [\App\Http\Controllers\Api\SubscriptionPlanController::class, 'show']);
+
 // Subscription Public Checkout & Pricing Endpoints
 Route::get('/subscriptions/settings', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'settings']);
 Route::post('/subscriptions/calculate', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'calculate']);

@@ -43,8 +43,15 @@ class SubscriptionSettings extends Page implements HasForms
         $this->form->fill([
             'is_enabled' => (bool)$settings->is_enabled,
             'default_discount_percentage' => $settings->default_discount_percentage ?? 10.00,
+            'subscription_product_ids' => $settings->subscription_product_ids ?? [],
+            'duration_discounts' => $settings->duration_discounts ?? [
+                '1_month' => 0,
+                '3_months' => 10,
+                '6_months' => 15,
+                '12_months' => 20,
+            ],
             'allowed_frequencies' => $settings->allowed_frequencies ?? ['weekly', 'biweekly', 'monthly'],
-            'duration_mode' => $settings->duration_mode ?? 'fixed',
+            'duration_mode' => $settings->duration_mode ?? 'customer_choice',
             'fixed_duration' => $settings->fixed_duration ?? 'until_cancelled',
             'allowed_durations' => $settings->allowed_durations ?? ['3_months', '6_months', '12_months', 'until_cancelled'],
             'customer_notes_enabled' => (bool)($settings->customer_notes_enabled ?? true),
@@ -55,6 +62,82 @@ class SubscriptionSettings extends Page implements HasForms
     {
         return $form
             ->schema([
+                Section::make('Subscription Products (المنتجات المخصصة لعروض الاشتراكات)')
+                    ->description('اختر المنتجات من كتالوج المتجر لعرضها كباقات اشتراك في صفحة (/flowers-subscription-deals). يتم استخدام تفاصيل المنتج الأصلية (الاسم، الصور، الوصف، السعر) مع تطبيق نسب الخصم المحددة أدناه.')
+                    ->schema([
+                        Select::make('subscription_product_ids')
+                            ->label('Select Products for Subscriptions (اختيار منتجات باقات الاشتراكات)')
+                            ->multiple()
+                            ->searchable()
+                            ->preload()
+                            ->options(function () {
+                                return \App\Models\Product::query()
+                                    ->where('is_visible', 1)
+                                    ->orderBy('id', 'desc')
+                                    ->limit(300)
+                                    ->get()
+                                    ->mapWithKeys(function ($p) {
+                                        $name = $p->getTranslation('name', 'ar') ?: $p->getTranslation('name', 'en') ?: $p->name;
+                                        return [$p->id => "#{$p->id} - {$name} (السعر الأصلي: {$p->price} ر.س)"];
+                                    })
+                                    ->toArray();
+                            })
+                            ->getSearchResultsUsing(function (string $search) {
+                                return \App\Models\Product::query()
+                                    ->where('is_visible', 1)
+                                    ->where(function ($q) use ($search) {
+                                        $q->where('name', 'like', "%{$search}%")
+                                          ->orWhere('id', 'like', "%{$search}%");
+                                    })
+                                    ->limit(50)
+                                    ->get()
+                                    ->mapWithKeys(function ($p) {
+                                        $name = $p->getTranslation('name', 'ar') ?: $p->getTranslation('name', 'en') ?: $p->name;
+                                        return [$p->id => "#{$p->id} - {$name} (السعر الأصلي: {$p->price} ر.س)"];
+                                    })
+                                    ->toArray();
+                            })
+                            ->helperText('يمكنك البحث واختيار منتجات الزهور التي ستكون متاحة كباقات اشتراك مباشر.')
+                            ->required(),
+                    ]),
+
+                Section::make('Subscription Discounts by Duration (خصومات الاشتراكات حسب المدة)')
+                    ->description('حدد نسبة الخصم المطبقة على السعر الأصلي لكل منتج عند اختيار العميل لمدة الاشتراك.')
+                    ->schema([
+                        TextInput::make('duration_discounts.1_month')
+                            ->label('1 Month Discount (خصم شهر)')
+                            ->numeric()
+                            ->minValue(0)
+                            ->maxValue(100)
+                            ->suffix('%')
+                            ->default(0),
+
+                        TextInput::make('duration_discounts.3_months')
+                            ->label('3 Months Discount (خصم 3 أشهر)')
+                            ->numeric()
+                            ->minValue(0)
+                            ->maxValue(100)
+                            ->suffix('%')
+                            ->default(10),
+
+                        TextInput::make('duration_discounts.6_months')
+                            ->label('6 Months Discount (خصم 6 أشهر)')
+                            ->numeric()
+                            ->minValue(0)
+                            ->maxValue(100)
+                            ->suffix('%')
+                            ->default(15),
+
+                        TextInput::make('duration_discounts.12_months')
+                            ->label('12 Months Discount (خصم 12 شهراً)')
+                            ->numeric()
+                            ->minValue(0)
+                            ->maxValue(100)
+                            ->suffix('%')
+                            ->default(20),
+                    ])
+                    ->columns(4),
+
                 Section::make('General Subscription Rules (القواعد العامة للاشتراكات)')
                     ->description('Enable or disable recurring subscriptions storewide, and configure the default recurring order discount.')
                     ->schema([
@@ -64,14 +147,14 @@ class SubscriptionSettings extends Page implements HasForms
                             ->default(true),
 
                         TextInput::make('default_discount_percentage')
-                            ->label('Default Subscription Discount (%) (نسبة الخصم الافتراضية)')
+                            ->label('Default Starting Discount (%) (نسبة الخصم الأساسية)')
                             ->numeric()
                             ->minValue(0)
                             ->maxValue(100)
                             ->suffix('%')
                             ->required()
                             ->default(10.00)
-                            ->helperText('Applied to recurring orders unless overridden individually on a specific product.'),
+                            ->helperText('Applied to recurring orders as base discount.'),
                     ])
                     ->columns(2),
 
@@ -90,18 +173,17 @@ class SubscriptionSettings extends Page implements HasForms
                     ]),
 
                 Section::make('Subscription Duration Configuration (إعدادات مدة خطة الاشتراك)')
-                    ->description('Choose whether to fix the duration automatically (so customers are not asked) or allow customers to choose their preferred duration.')
+                    ->description('Choose whether to fix the duration automatically or allow customers to choose their preferred duration.')
                     ->schema([
                         Radio::make('duration_mode')
                             ->label('Duration Mode (نظام تحديد مدة الاشتراك)')
                             ->options([
-                                'fixed' => '🔒 Fixed Duration (مدة ثابتة محددة مسبقاً - لا يتم سؤال العميل في المتجر)',
-                                'customer_choice' => '👥 Let Customer Choose (السماح للعميل باختيار المدة في صفحة المنتج)',
+                                'customer_choice' => '👥 Let Customer Choose (السماح للعميل باختيار المدة في صفحة الباقة)',
+                                'fixed' => '🔒 Fixed Duration (مدة ثابتة محددة مسبقاً)',
                             ])
-                            ->default('fixed')
+                            ->default('customer_choice')
                             ->required()
-                            ->live()
-                            ->helperText('Select whether duration is pre-determined by store settings or selected by the customer on the product page.'),
+                            ->live(),
 
                         Select::make('fixed_duration')
                             ->label('Fixed Plan Duration (المدة الثابتة للاشتراك)')
@@ -113,21 +195,19 @@ class SubscriptionSettings extends Page implements HasForms
                             ])
                             ->default('until_cancelled')
                             ->required()
-                            ->visible(fn (Forms\Get $get) => $get('duration_mode') === 'fixed')
-                            ->helperText('All subscriptions will automatically run on this duration. The frontend will NOT prompt the customer for duration choice.'),
+                            ->visible(fn (Forms\Get $get) => $get('duration_mode') === 'fixed'),
 
                         CheckboxList::make('allowed_durations')
                             ->label('Allowed Duration Options for Customers (الخيارات المتاحة لاختيار العميل)')
                             ->options([
+                                '1_month' => '1 Month (شهر واحد)',
                                 '3_months' => '3 Months (3 أشهر)',
                                 '6_months' => '6 Months (6 أشهر)',
                                 '12_months' => '12 Months (سنة كاملة)',
-                                'until_cancelled' => 'Until Cancelled / Auto-renew (حتى الإلغاء)',
                             ])
-                            ->columns(2)
+                            ->columns(4)
                             ->required()
-                            ->visible(fn (Forms\Get $get) => $get('duration_mode') === 'customer_choice')
-                            ->helperText('Check the duration options that will be displayed on the product page for the customer to choose.'),
+                            ->visible(fn (Forms\Get $get) => $get('duration_mode') === 'customer_choice'),
                     ]),
             ])
             ->statePath('data');
@@ -137,7 +217,7 @@ class SubscriptionSettings extends Page implements HasForms
     {
         return [
             Action::make('save')
-                ->label('Save Subscription Settings (حفظ الإعدادات)')
+                ->label('Save Subscription Settings (حفظ إعدادات الاشتراكات)')
                 ->submit('save')
                 ->icon('heroicon-o-check'),
         ];
@@ -151,16 +231,24 @@ class SubscriptionSettings extends Page implements HasForms
         $settings->fill([
             'is_enabled' => (bool)($data['is_enabled'] ?? true),
             'default_discount_percentage' => (float)($data['default_discount_percentage'] ?? 10.00),
+            'subscription_product_ids' => $data['subscription_product_ids'] ?? [],
+            'duration_discounts' => $data['duration_discounts'] ?? [
+                '1_month' => 0,
+                '3_months' => 10,
+                '6_months' => 15,
+                '12_months' => 20,
+            ],
             'allowed_frequencies' => $data['allowed_frequencies'] ?? ['weekly', 'biweekly', 'monthly'],
-            'duration_mode' => $data['duration_mode'] ?? 'fixed',
+            'duration_mode' => $data['duration_mode'] ?? 'customer_choice',
             'fixed_duration' => $data['fixed_duration'] ?? 'until_cancelled',
-            'allowed_durations' => $data['allowed_durations'] ?? ['3_months', '6_months', '12_months', 'until_cancelled'],
+            'allowed_durations' => $data['allowed_durations'] ?? ['1_month', '3_months', '6_months', '12_months'],
+            'customer_notes_enabled' => (bool)($data['customer_notes_enabled'] ?? true),
         ]);
         $settings->save();
 
         Notification::make()
-            ->title('Subscription Settings Saved')
-            ->body('Global subscription rules and duration configuration have been updated successfully.')
+            ->title('Subscription Settings Saved (تم حفظ إعدادات الاشتراكات)')
+            ->body('Subscription products and pricing rules updated successfully.')
             ->success()
             ->send();
     }
