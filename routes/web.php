@@ -84,4 +84,13 @@ Route::get('/checkout', function (\Illuminate\Http\Request $request) {
     return redirect("{$frontendUrl}/en/checkout" . ($query ? "?{$query}" : ''));
 });
 
+// 🖼️ Storage Fallback Route: Serves files from storage/app/public even when web root is root directory
+Route::get('/storage/{path}', function ($path) {
+    $filePath = storage_path('app/public/' . $path);
+    if (! file_exists($filePath)) {
+        abort(404);
+    }
+    return response()->file($filePath);
+})->where('path', '.*');
+
 require __DIR__.'/auth.php';
