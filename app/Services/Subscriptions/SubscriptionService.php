@@ -486,6 +486,17 @@ class SubscriptionService
                 'delivery_status' => 'processing',
             ]);
 
+            // Advance parent subscription next_delivery_date to the subsequent scheduled cycle
+            $subsequentDelivery = $subscription->deliveries()
+                ->where('delivery_status', 'scheduled')
+                ->where('id', '!=', $delivery->id)
+                ->orderBy('scheduled_date', 'asc')
+                ->first();
+
+            $subscription->update([
+                'next_delivery_date' => $subsequentDelivery?->scheduled_date?->toDateString(),
+            ]);
+
             $subscription->logActivity(
                 'delivery_order_created',
                 "Order #{$order->order_number} generated for delivery #{$delivery->delivery_number}.",

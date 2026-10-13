@@ -299,7 +299,10 @@ class SubscriptionResource extends Resource
                     ->color('success')
                     ->requiresConfirmation()
                     ->modalHeading('Trigger Immediate Delivery Order')
-                    ->modalDescription('This will generate a formal Order and attempt to charge the recurring payment token for the earliest scheduled delivery.')
+                    ->modalDescription('This will generate a formal Order and charge/process the recurring payment for the earliest scheduled delivery cycle.')
+                    ->modalSubmitActionLabel('Yes, Generate Order')
+                    ->modalCancelActionLabel('Cancel')
+                    ->modalIcon('heroicon-o-truck')
                     ->visible(fn (Subscription $record) => $record->status === 'active')
                     ->action(function (Subscription $record, SubscriptionService $service) {
                         $delivery = $record->deliveries()
@@ -310,7 +313,7 @@ class SubscriptionResource extends Resource
                         if (!$delivery) {
                             Notification::make()
                                 ->title('No scheduled deliveries')
-                                ->body('There are no pending scheduled delivery cycles for this subscription.')
+                                ->body('There are no pending scheduled delivery cycles remaining for this subscription.')
                                 ->warning()
                                 ->send();
                             return;
@@ -318,11 +321,20 @@ class SubscriptionResource extends Resource
 
                         try {
                             $order = $service->generateOrderForDelivery($delivery, true);
+                            $record->refresh();
+                            $orderUrl = route('filament.admin.resources.orders.edit', $order->id);
+
                             if ($order->payment_status === 'paid') {
                                 Notification::make()
                                     ->title('Delivery Order Generated & Paid')
-                                    ->body("Order #{$order->order_number} successfully created and recurring payment auto-charged via {$order->payment_method}.")
+                                    ->body("Order #{$order->order_number} successfully created for delivery #{$delivery->delivery_number}.")
                                     ->success()
+                                    ->actions([
+                                        \Filament\Notifications\Actions\Action::make('view_order')
+                                            ->label('View Order')
+                                            ->url($orderUrl)
+                                            ->openUrlInNewTab(),
+                                    ])
                                     ->send();
                             } else {
                                 $reason = $order->failed_order_reason ? "({$order->failed_order_reason})" : "(Payment Pending)";
@@ -330,6 +342,12 @@ class SubscriptionResource extends Resource
                                     ->title('Delivery Order Generated')
                                     ->body("Order #{$order->order_number} created for delivery #{$delivery->delivery_number}. {$reason}")
                                     ->warning()
+                                    ->actions([
+                                        \Filament\Notifications\Actions\Action::make('view_order')
+                                            ->label('View Order')
+                                            ->url($orderUrl)
+                                            ->openUrlInNewTab(),
+                                    ])
                                     ->send();
                             }
                         } catch (\Throwable $e) {
