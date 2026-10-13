@@ -184,7 +184,18 @@ class ProductResource extends Resource
                                     ->imagePreviewHeight('220')
                                     ->openable()
                                     ->disk('public')
-                                    ->directory('products'),
+                                    ->directory('products')
+                                    ->getUploadedFileNameForStorageUsing(function ($file, Forms\Get $get, ?Product $record): string {
+                                        $rawSlug = $get('slug') ?: ($record?->slug ?: ($get('name.en') ?: ($get('name.ar') ?: 'product')));
+                                        $slug = Str::slug($rawSlug) ?: 'product';
+                                        $clientBase = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+                                        $cleanBase = Str::slug($clientBase) ?: 'image';
+                                        $ext = strtolower($file->getClientOriginalExtension() ?: 'jpg');
+                                        if (str_starts_with($cleanBase, "{$slug}-")) {
+                                            return "{$cleanBase}.{$ext}";
+                                        }
+                                        return "{$slug}-{$cleanBase}.{$ext}";
+                                    }),
 
                                 FileUpload::make('gallery')
                                     ->label('Gallery Images')
@@ -195,7 +206,18 @@ class ProductResource extends Resource
                                     ->directory('products/gallery')
                                     ->panelLayout('grid')
                                     ->imagePreviewHeight('150')
-                                    ->openable(),
+                                    ->openable()
+                                    ->getUploadedFileNameForStorageUsing(function ($file, Forms\Get $get, ?Product $record): string {
+                                        $rawSlug = $get('slug') ?: ($record?->slug ?: ($get('name.en') ?: ($get('name.ar') ?: 'product')));
+                                        $slug = Str::slug($rawSlug) ?: 'product';
+                                        $clientBase = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+                                        $cleanBase = Str::slug($clientBase) ?: 'gallery';
+                                        $ext = strtolower($file->getClientOriginalExtension() ?: 'jpg');
+                                        if (str_starts_with($cleanBase, "{$slug}-")) {
+                                            return "{$cleanBase}.{$ext}";
+                                        }
+                                        return "{$slug}-{$cleanBase}.{$ext}";
+                                    }),
                             ]),
                     ])->columnSpan(2),
 

@@ -839,11 +839,13 @@ class StoreImportService
             }
 
             // Featured Image: check disk first, download if missing, never save live URL
+            $prodSlug = $product->slug ?: Str::slug($cleanNameEn ?: ($cleanNameAr ?: 'product'));
+
             if ($featuredImage) {
                 if (!empty($product->image) && !str_starts_with($product->image, 'http') && Storage::disk('public')->exists($product->image)) {
                     // Valid local image already present - preserve it
                 } else {
-                    $resolvedImg = $this->resolveLocalImagePath($featuredImage, 'products', true);
+                    $resolvedImg = $this->resolveLocalImagePath($featuredImage, 'products', true, $prodSlug);
                     if ($resolvedImg) {
                         $product->image = $resolvedImg;
                     }
@@ -858,7 +860,7 @@ class StoreImportService
                 if (!$hasValidLocalGallery) {
                     $resolvedGallery = [];
                     foreach ($gallery as $gUrl) {
-                        $resolvedG = $this->resolveLocalImagePath($gUrl, 'products/gallery', true);
+                        $resolvedG = $this->resolveLocalImagePath($gUrl, 'products/gallery', true, $prodSlug);
                         if ($resolvedG) {
                             $resolvedGallery[] = $resolvedG;
                         }
@@ -1328,7 +1330,7 @@ class StoreImportService
      * Searches existing disk files first. If not found, downloads it to local storage.
      * NEVER returns a live URL (returns null on failure to prevent live URLs in DB).
      */
-    public function resolveLocalImagePath(?string $url, string $directory = 'products', bool $downloadIfMissing = true): ?string
+    public function resolveLocalImagePath(?string $url, string $directory = 'products', bool $downloadIfMissing = true, ?string $productSlug = null): ?string
     {
         if (empty($url)) {
             return null;
@@ -1348,7 +1350,74 @@ class StoreImportService
             return $cleaned;
         }
 
-        // Preserve WordPress uploads subpath (e.g. 2025/10/103-4.png) to prevent basename collisions across dates/products
+        // When productSlug is provided, enforce {productSlug}-{filename} naming without date subdirectories
+        if (! empty($productSlug)) {
+            $parsedPath = parse_url($url, PHP_URL_PATH);
+            if (! $parsedPath) {
+                return null;
+            }
+
+            $rawBase = basename($parsedPath);
+            $decodedBase = urldecode($rawBase);
+            $info = pathinfo($decodedBase);
+
+            $ext = strtolower($info['extension'] ?? 'jpg');
+            if (empty($ext) || strlen($ext) > 5) {
+                $ext = 'jpg';
+            }
+
+            $fileSlug = Str::slug($info['filename'] ?? 'file');
+            if (empty($fileSlug)) {
+                $fileSlug = 'media-' . substr(md5($url), 0, 10);
+            }
+
+            $cleanSlug = Str::slug($productSlug);
+            $targetFilename = str_starts_with($fileSlug, "{$cleanSlug}-")
+                ? "{$fileSlug}.{$ext}"
+                : "{$cleanSlug}-{$fileSlug}.{$ext}";
+            $targetRelativePath = "{$directory}/{$targetFilename}";
+
+            $altDir = ($directory === 'products') ? 'products/gallery' : ($directory === 'products/gallery' ? 'products' : null);
+
+            $candidates = [
+                $targetRelativePath,
+            ];
+            if ($altDir) {
+                $candidates[] = "{$altDir}/{$targetFilename}";
+            }
+
+            // Dimension variations (-600x600, -600x600-1)
+            $cleanedFilename = preg_replace('/-\d+x\d+(-\d+)?$/i', '', $info['filename'] ?? '');
+            if (! empty($cleanedFilename) && $cleanedFilename !== ($info['filename'] ?? '')) {
+                $candSlug = Str::slug($cleanedFilename);
+                $finalNoDim = str_starts_with($candSlug, "{$cleanSlug}-")
+                    ? "{$candSlug}.{$ext}"
+                    : "{$cleanSlug}-{$candSlug}.{$ext}";
+                $candidates[] = "{$directory}/{$finalNoDim}";
+                if ($altDir) {
+                    $candidates[] = "{$altDir}/{$finalNoDim}";
+                }
+            }
+
+            // 1. Check disk first
+            foreach (array_unique($candidates) as $cand) {
+                if ($disk->exists($cand) && $disk->size($cand) > 50) {
+                    return $cand;
+                }
+            }
+
+            // 2. Download directly to target path
+            if ($downloadIfMissing) {
+                $downloaded = $this->downloadAndSaveImage($url, $targetRelativePath);
+                if ($downloaded) {
+                    return $downloaded;
+                }
+            }
+
+            return null;
+        }
+
+        // Preserve WordPress uploads subpath for non-product assets (categories, cms, etc.)
         $subPath = null;
         if (preg_match('#wp-content/uploads/(.+)$#i', $url, $m)) {
             $subPath = urldecode($m[1]);

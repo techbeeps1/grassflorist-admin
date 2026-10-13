@@ -96,11 +96,12 @@ class StoreDownloadImagesCommand extends Command
 
                 if ($product && ! empty($images)) {
                     $dirty = false;
+                    $prodSlug = $product->slug ?: Str::slug($product->getTranslation('name', 'en') ?: 'product');
 
                     // 1. Featured Image (First image in WC list)
                     $featuredUrl = $images[0]['src'] ?? null;
                     if ($featuredUrl) {
-                        $localFeatured = $this->downloadFile($featuredUrl, 'products', $disk, $force);
+                        $localFeatured = $this->downloadFile($featuredUrl, 'products', $disk, $force, $prodSlug);
                         if ($localFeatured && $product->image !== $localFeatured) {
                             $product->image = $localFeatured;
                             $dirty = true;
@@ -113,7 +114,7 @@ class StoreDownloadImagesCommand extends Command
                     foreach ($images as $img) {
                         $imgUrl = $img['src'] ?? null;
                         if ($imgUrl) {
-                            $localG = $this->downloadFile($imgUrl, 'products/gallery', $disk, $force);
+                            $localG = $this->downloadFile($imgUrl, 'products/gallery', $disk, $force, $prodSlug);
                             if ($localG) {
                                 $newGallery[] = $localG;
                                 $galleryCount++;
@@ -208,10 +209,11 @@ class StoreDownloadImagesCommand extends Command
         $query->chunkById(25, function ($products) use ($disk, $force, $bar, &$featuredDownloaded, &$galleryDownloaded) {
             foreach ($products as $product) {
                 $dirty = false;
+                $prodSlug = $product->slug ?: Str::slug($product->getTranslation('name', 'en') ?: 'product');
 
                 // 1. Featured Image
                 if ($product->image && (str_starts_with($product->image, 'http://') || str_starts_with($product->image, 'https://'))) {
-                    $localFeatured = $this->downloadFile($product->image, 'products', $disk, $force);
+                    $localFeatured = $this->downloadFile($product->image, 'products', $disk, $force, $prodSlug);
                     if ($localFeatured) {
                         $product->image = $localFeatured;
                         $dirty = true;
@@ -227,7 +229,7 @@ class StoreDownloadImagesCommand extends Command
 
                     foreach ($gallery as $imgUrl) {
                         if (is_string($imgUrl) && (str_starts_with($imgUrl, 'http://') || str_starts_with($imgUrl, 'https://'))) {
-                            $localGalleryPath = $this->downloadFile($imgUrl, 'products/gallery', $disk, $force);
+                            $localGalleryPath = $this->downloadFile($imgUrl, 'products/gallery', $disk, $force, $prodSlug);
                             if ($localGalleryPath) {
                                 $newGallery[] = $localGalleryPath;
                                 $galleryChanged = true;
@@ -264,50 +266,46 @@ class StoreDownloadImagesCommand extends Command
     /**
      * Download a file from a URL and save to the given directory on disk.
      */
-    protected function downloadFile(string $url, string $directory, $disk, bool $force = false): ?string
+    protected function downloadFile(string $url, string $directory, $disk, bool $force = false, ?string $productSlug = null): ?string
     {
         $url = trim($url);
         if (empty($url) || ! preg_match('#^https?://#i', $url)) {
             return null;
         }
 
-        // Clean and decode original filename, preserving WordPress upload YYYY/MM subdirectories
-        if (preg_match('#wp-content/uploads/(.+)$#i', $url, $m)) {
+        $parsedPath = parse_url($url, PHP_URL_PATH);
+        if (! $parsedPath) {
+            return null;
+        }
+
+        $originalFilename = basename($parsedPath);
+        $cleanFilename = urldecode($originalFilename);
+        $info = pathinfo($cleanFilename);
+
+        $name = Str::slug($info['filename'] ?? 'file');
+        if (empty($name)) {
+            $name = 'media-' . substr(md5($url), 0, 10);
+        }
+        $ext = strtolower($info['extension'] ?? 'jpg');
+        if (empty($ext) || strlen($ext) > 5) {
+            $ext = 'jpg';
+        }
+
+        // When productSlug is provided, enforce {productSlug}-{filename} naming without date subdirectories
+        if (! empty($productSlug)) {
+            $cleanSlug = Str::slug($productSlug);
+            $targetFilename = str_starts_with($name, "{$cleanSlug}-")
+                ? "{$name}.{$ext}"
+                : "{$cleanSlug}-{$name}.{$ext}";
+            $relativePath = "{$directory}/{$targetFilename}";
+        } elseif (preg_match('#wp-content/uploads/(.+)$#i', $url, $m)) {
+            // Clean and decode original filename, preserving WordPress upload YYYY/MM subdirectories for non-product assets
             $subPath = urldecode($m[1]);
             $subDir = dirname($subPath);
-            $subFile = basename($subPath);
-            $info = pathinfo($subFile);
-            $name = Str::slug($info['filename'] ?? 'file');
-            if (empty($name)) {
-                $name = 'media-' . substr(md5($url), 0, 10);
-            }
-            $ext = strtolower($info['extension'] ?? 'jpg');
-            if (empty($ext) || strlen($ext) > 5) {
-                $ext = 'jpg';
-            }
             $targetDir = trim($directory, '/') . ($subDir !== '.' ? '/' . trim($subDir, '/') : '');
             $targetFilename = "{$name}.{$ext}";
             $relativePath = "{$targetDir}/{$targetFilename}";
         } else {
-            $parsedPath = parse_url($url, PHP_URL_PATH);
-            if (! $parsedPath) {
-                return null;
-            }
-
-            $originalFilename = basename($parsedPath);
-            $cleanFilename = urldecode($originalFilename);
-
-            // Sanitize target filename
-            $info = pathinfo($cleanFilename);
-            $name = Str::slug($info['filename'] ?? 'file');
-            if (empty($name)) {
-                $name = 'media-' . substr(md5($url), 0, 10);
-            }
-            $ext = strtolower($info['extension'] ?? 'jpg');
-            if (empty($ext) || strlen($ext) > 5) {
-                $ext = 'jpg';
-            }
-
             $targetFilename = "{$name}.{$ext}";
             $relativePath = "{$directory}/{$targetFilename}";
         }
