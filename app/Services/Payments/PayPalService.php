@@ -351,4 +351,89 @@ class PayPalService implements PaymentGatewayInterface
         }
         return rtrim($envUrl, '/');
     }
+
+    /**
+     * Charge a recurring subscription delivery token via PayPal.
+     */
+    public function chargeRecurringToken(Order $order, string $token, array $options = []): array
+    {
+        $conversionRate = (float)($order->exchange_rate ?: 0.2667);
+        $sarAmount = (float)($order->sar_amount ?: $order->total_amount);
+        $amount = round($sarAmount * $conversionRate, 2);
+
+        $order->update([
+            'currency' => 'USD',
+            'currency_amount' => $amount,
+            'sar_amount' => $sarAmount,
+            'exchange_rate' => $conversionRate,
+        ]);
+
+        $accessToken = $this->getAccessToken();
+        if (empty($accessToken)) {
+            Log::error("PayPal access token missing during chargeRecurringToken for order #{$order->order_number}");
+            return [
+                'success' => false,
+                'message' => 'PayPal credentials / access token unavailable.',
+            ];
+        }
+
+        try {
+            $payload = [
+                'intent' => 'CAPTURE',
+                'purchase_units' => [
+                    [
+                        'reference_id' => (string)($order->order_number ?? $order->id),
+                        'description' => "Grass Florist Recurring Subscription Order #{$order->order_number}",
+                        'amount' => [
+                            'currency_code' => 'USD',
+                            'value' => number_format($amount, 2, '.', ''),
+                        ],
+                    ],
+                ],
+            ];
+
+            if (!empty($token)) {
+                $payload['payment_source'] = [
+                    'token' => [
+                        'id' => $token,
+                        'type' => 'PAYMENT_METHOD_TOKEN',
+                    ],
+                ];
+            }
+
+            $response = Http::withToken($accessToken)
+                ->timeout(10)
+                ->post("{$this->baseUrl}/v2/checkout/orders", $payload);
+
+            $data = $response->json() ?? [];
+            $status = strtoupper($data['status'] ?? '');
+            $isPaid = ($response->successful() && in_array($status, ['COMPLETED', 'APPROVED']));
+            $txId = $data['purchase_units'][0]['payments']['captures'][0]['id'] ?? ($data['id'] ?? ('PP_REC_' . time()));
+
+            PaymentLog::create([
+                'order_id' => $order->id,
+                'order_number' => $order->order_number ?? (string)$order->id,
+                'gateway' => 'paypal',
+                'event_type' => 'recurring_charge',
+                'status' => $isPaid ? 'success' : 'failed',
+                'razorpay_payment_id' => $txId,
+                'amount' => $order->total_amount,
+                'message' => $isPaid ? "PayPal recurring payment charged successfully: {$txId}" : "PayPal recurring charge failed.",
+                'payload' => $data,
+            ]);
+
+            return [
+                'success' => $isPaid,
+                'transaction_id' => $txId,
+                'message' => $isPaid ? 'PayPal recurring charge successful' : ($data['message'] ?? 'Payment declined'),
+                'raw' => $data,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('PayPal chargeRecurringToken exception: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => 'PayPal recurring payment exception: ' . $e->getMessage(),
+            ];
+        }
+    }
 }

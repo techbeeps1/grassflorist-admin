@@ -60,12 +60,12 @@ Route::post('/newsletter', [\App\Http\Controllers\Api\NewsletterController::clas
 Route::prefix('cart')->group(function () {
 
 Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->get('/viewcart', [CartController::class, 'viewcart']);
-Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->get('/empty', [CartController::class, 'empty']);
+Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->match(['get', 'post'], '/empty', [CartController::class, 'empty']);
 Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->post('add', [CartController::class, 'add']);
 Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->post('merge', [CartController::class, 'merge']);
 Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->post('cartupdate', [CartController::class, 'cartupdate']);
 Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->post('remove', [CartController::class, 'remove']);
-Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->post('clear', [CartController::class, 'clear']);
+Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->match(['get', 'post'], '/clear', [CartController::class, 'clear']);
 Route::post('/checkout', [CheckoutController::class, 'process']);
 Route::post('/razorpay/callback', [CheckoutController::class, 'razorpayCallback'])->name('razorpay.callback');
 Route::post('/razorpay/webhook', [CheckoutController::class, 'razorpayWebhook'])->name('razorpay.webhook.cart');
@@ -101,18 +101,40 @@ Route::prefix('my-account')->group(function () {
         Route::get('/view-address/{user_id}', [AuthController::class, 'viewAddress']);
         Route::get('/checkauth', [AuthController::class, 'checkAuth']);
 
-Route::post('/add-wishlist',[WishlistController::class,'store']);
-Route::get('/view-wishlist',[WishlistController::class,'index']);
-Route::get('/view-wishlistid',[WishlistController::class,'wishlistid']);
-Route::delete('/delete-wishlist',[WishlistController::class,'destroy']);
+        Route::post('/add-wishlist',[WishlistController::class,'store']);
+        Route::get('/view-wishlist',[WishlistController::class,'index']);
+        Route::get('/view-wishlistid',[WishlistController::class,'wishlistid']);
+        Route::delete('/delete-wishlist',[WishlistController::class,'destroy']);
 
+    });
 
-
-
+    // Subscriptions Dashboard Actions (handles both Bearer token & user_id fallback via resolveCustomer)
+    Route::get('/subscriptions', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'index']);
+    Route::get('/subscriptions/{id}', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'show']);
+    Route::post('/subscriptions/{id}/pause', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'pause']);
+    Route::post('/subscriptions/{id}/resume', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'resume']);
+    Route::post('/subscriptions/{id}/skip-next', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'skipNext']);
+    Route::post('/subscriptions/{id}/deliveries/{deliveryId}/reschedule', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'reschedule']);
+    Route::post('/subscriptions/{id}/address', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'updateAddress']);
+    Route::post('/subscriptions/{id}/quantity', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'updateQuantity']);
+    Route::post('/subscriptions/{id}/cancel', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'cancel']);
+    Route::post('/subscriptions/{id}/retry-payment', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'retryPayment']);
 });
 
-
-});
+// Subscription Public Checkout & Pricing Endpoints
+Route::get('/subscriptions/settings', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'settings']);
+Route::post('/subscriptions/calculate', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'calculate']);
+Route::post('/subscriptions/checkout', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'checkout']);
+Route::get('/customer/subscriptions', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'index']);
+Route::get('/customer/subscriptions/{id}', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'show']);
+Route::post('/customer/subscriptions/{id}/pause', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'pause']);
+Route::post('/customer/subscriptions/{id}/resume', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'resume']);
+Route::post('/customer/subscriptions/{id}/skip-next', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'skipNext']);
+Route::post('/customer/subscriptions/{id}/deliveries/{deliveryId}/reschedule', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'reschedule']);
+Route::post('/customer/subscriptions/{id}/address', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'updateAddress']);
+Route::post('/customer/subscriptions/{id}/quantity', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'updateQuantity']);
+Route::post('/customer/subscriptions/{id}/cancel', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'cancel']);
+Route::post('/customer/subscriptions/{id}/retry-payment', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'retryPayment']);
 
 //Auth user (Login & Logout)
 Route::prefix('v1')->group(function () {

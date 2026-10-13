@@ -20,4 +20,11 @@ Schedule::command('payments:reconcile-pending')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Daily recurring subscription delivery processing (06:00 AM Saudi Time)
+Schedule::command('subscriptions:process-deliveries')
+    ->dailyAt('06:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+
 

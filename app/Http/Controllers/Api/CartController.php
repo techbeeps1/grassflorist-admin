@@ -58,13 +58,15 @@ class CartController extends Controller
             }
         }
 
-        $sessionId = $request->session_id;
+        $sessionId = $request->session_id ?: $request->query('session_id');
         if ($sessionId) {
-            return Cart::where('session_id', $sessionId)
-                ->whereNull('user_id')
+            $sessionCart = Cart::where('session_id', $sessionId)
                 ->where('status', 'active')
                 ->latest('updated_at')
                 ->first();
+            if ($sessionCart) {
+                return $sessionCart;
+            }
         }
 
         return null;
@@ -84,14 +86,15 @@ class CartController extends Controller
                 'products.category_id as category_id',
                 'products.sub_category_id as sub_category_id',
                 'products.slug as product_slug',
-                'products.price as product_price',
+                'cart_items.price as product_price',
                 'products.mrp as product_mrp',
                 'products.quantity as stock_quantity',
                 'products.is_visible as is_visible',
                 'cart_items.quantity',
                 DB::raw('COALESCE(cart_items.image, products.image) as image'),
                 'cart_items.product_weight',
-                DB::raw('(cart_items.quantity * products.price) as subtotal'),
+                'cart_items.meta_data',
+                DB::raw('(cart_items.quantity * cart_items.price) as subtotal'),
                 'cart_items.created_at',
                 'cart_items.updated_at'
             )
@@ -99,6 +102,12 @@ class CartController extends Controller
             ->get();
 
         $items = $items->map(function ($item) {
+            if (is_string($item->meta_data)) {
+                $decodedMeta = json_decode($item->meta_data, true);
+                if (is_array($decodedMeta)) {
+                    $item->meta_data = $decodedMeta;
+                }
+            }
             if (is_string($item->product_name)) {
                 $trimmed = trim($item->product_name);
                 if (str_starts_with($trimmed, '{') || str_starts_with($trimmed, '[')) {
@@ -173,7 +182,19 @@ class CartController extends Controller
             }
 
             $availableStock = (int) ($product->quantity ?? 999);
-            $existing = $userCart->items()->where('product_id', $guestItem->product_id)->first();
+            $isSub = !empty($guestItem->meta_data['is_subscription']);
+            $subFreq = $guestItem->meta_data['frequency'] ?? null;
+            $existing = $userCart->items()->where('product_id', $guestItem->product_id)
+                ->when($isSub, function ($q) use ($subFreq) {
+                    $q->where('meta_data->is_subscription', true)
+                      ->where('meta_data->frequency', $subFreq);
+                }, function ($q) {
+                    $q->where(function ($sub) {
+                        $sub->whereNull('meta_data')
+                            ->orWhere('meta_data->is_subscription', false);
+                    });
+                })
+                ->first();
 
             if ($existing) {
                 // Add quantities up
@@ -193,6 +214,7 @@ class CartController extends Controller
                     'price' => $guestItem->price ?: $product->price,
                     'image' => $guestItem->image ?: $product->image,
                     'product_weight' => $guestItem->product_weight ?: ($product->weight ?: '0'),
+                    'meta_data' => $guestItem->meta_data,
                 ]);
             }
         }
@@ -258,7 +280,18 @@ class CartController extends Controller
                 $cart->ensureRecoveryToken();
                 $cart->save();
 
-                $this->updateOrCreateCartItem($cart, $product, $request->quantity);
+                $metaData = $request->input('meta_data');
+                if (!$metaData && $request->boolean('is_subscription')) {
+                    $metaData = [
+                        'is_subscription' => true,
+                        'frequency' => $request->input('frequency', 'weekly'),
+                        'duration_type' => $request->input('duration_type', 'until_cancelled'),
+                        'start_date' => $request->input('start_date'),
+                        'time_slot' => $request->input('time_slot'),
+                    ];
+                }
+
+                $this->updateOrCreateCartItem($cart, $product, (int)$request->quantity, $metaData);
             } else {
                 if (!$request->session_id) {
                     return response()->json(['error' => 'session_id is required for guest cart'], 422);
@@ -282,7 +315,18 @@ class CartController extends Controller
                 $cart->ensureRecoveryToken();
                 $cart->save();
 
-                $this->updateOrCreateCartItem($cart, $product, $request->quantity);
+                $metaData = $request->input('meta_data');
+                if (!$metaData && $request->boolean('is_subscription')) {
+                    $metaData = [
+                        'is_subscription' => true,
+                        'frequency' => $request->input('frequency', 'weekly'),
+                        'duration_type' => $request->input('duration_type', 'until_cancelled'),
+                        'start_date' => $request->input('start_date'),
+                        'time_slot' => $request->input('time_slot'),
+                    ];
+                }
+
+                $this->updateOrCreateCartItem($cart, $product, (int)$request->quantity, $metaData);
             }
 
             return response()->json([
@@ -299,9 +343,34 @@ class CartController extends Controller
         }
     }
 
-    protected function updateOrCreateCartItem(Cart $cart, Product $product, int $quantity): void
+    protected function updateOrCreateCartItem(Cart $cart, Product $product, int $quantity, ?array $metaData = null): void
     {
-        $cartItem = $cart->items()->where('product_id', $product->id)->first();
+        $isSubscription = !empty($metaData['is_subscription']);
+        $subFreq = $metaData['frequency'] ?? null;
+
+        $query = $cart->items()->where('product_id', $product->id);
+        if ($isSubscription) {
+            $query->where('meta_data->is_subscription', true)
+                  ->where('meta_data->frequency', $subFreq);
+        } else {
+            $query->where(function ($q) {
+                $q->whereNull('meta_data')
+                  ->orWhere('meta_data->is_subscription', false);
+            });
+        }
+        $cartItem = $query->first();
+
+        // Calculate unit price: apply subscription discount if subscription item
+        $unitPrice = (float)($product->sale_price ?: $product->regular_price ?: $product->price ?: 0);
+        if ($isSubscription) {
+            $settings = \App\Models\SubscriptionSetting::current();
+            $discountPct = ($product->subscription_discount_percentage !== null && $product->subscription_discount_percentage > 0)
+                ? (float)$product->subscription_discount_percentage
+                : (float)($settings->default_discount_percentage ?? 10.00);
+            $unitPrice = round($unitPrice * (1 - ($discountPct / 100)), 2);
+            $metaData['discount_percentage'] = $discountPct;
+        }
+
         $availableStock = (int) ($product->quantity ?? 0);
 
         if ($cartItem) {
@@ -309,15 +378,20 @@ class CartController extends Controller
             if ($availableStock > 0 && $newQty > $availableStock) {
                 $newQty = $availableStock;
             }
-            $cartItem->update(['quantity' => $newQty]);
+            $cartItem->update([
+                'quantity' => $newQty,
+                'price' => $unitPrice,
+                'meta_data' => $metaData,
+            ]);
         } else {
             $qtyToAdd = ($availableStock > 0 && $quantity > $availableStock) ? $availableStock : $quantity;
             $cart->items()->create([
                 'product_id' => $product->id,
                 'quantity' => $qtyToAdd,
-                'price' => $product->price,
-                'image' => $product->image,
+                'price' => $unitPrice,
+                'image' => is_array($product->image) ? reset($product->image) : ($product->image ?: ''),
                 'product_weight' => $product->weight ?: '0',
+                'meta_data' => $metaData,
             ]);
         }
     }
@@ -450,22 +524,55 @@ class CartController extends Controller
                     }
 
                     $availableStock = (int) ($product->quantity ?? 999);
-                    $existing = $userCart->items()->where('product_id', $pid)->first();
+                    $isSub = !empty($local['meta_data']['is_subscription']) || !empty($local['is_subscription']);
+                    $subFreq = $local['meta_data']['frequency'] ?? ($local['frequency'] ?? null);
+                    $existing = $userCart->items()->where('product_id', $pid)
+                        ->when($isSub, function ($q) use ($subFreq) {
+                            $q->where('meta_data->is_subscription', true)
+                              ->where('meta_data->frequency', $subFreq);
+                        }, function ($q) {
+                            $q->where(function ($sub) {
+                                $sub->whereNull('meta_data')
+                                    ->orWhere('meta_data->is_subscription', false);
+                            });
+                        })
+                        ->first();
+
+                    $metaData = $local['meta_data'] ?? null;
+                    if ($isSub && !$metaData) {
+                        $metaData = [
+                            'is_subscription' => true,
+                            'frequency' => $subFreq ?: 'weekly',
+                            'duration_type' => $local['duration_type'] ?? 'until_cancelled',
+                        ];
+                    }
+
+                    $itemPrice = $existing ? $existing->price : ($local['price'] ?? $product->price);
+                    if ($isSub && empty($local['price']) && !$existing) {
+                        $settings = \App\Models\SubscriptionSetting::current();
+                        $discountPct = (float)($product->subscription_discount_percentage ?: ($settings->default_discount_percentage ?? 10));
+                        $itemPrice = round($product->price * (1 - $discountPct / 100), 2);
+                        $metaData['discount_percentage'] = $discountPct;
+                    }
 
                     if ($existing) {
                         $newQty = max($existing->quantity, $qty);
                         if ($availableStock > 0 && $newQty > $availableStock) {
                             $newQty = $availableStock;
                         }
-                        $existing->update(['quantity' => $newQty]);
+                        $existing->update([
+                            'quantity' => $newQty,
+                            'meta_data' => $metaData ?: $existing->meta_data,
+                        ]);
                     } else {
                         $qtyToAdd = ($availableStock > 0 && $qty > $availableStock) ? $availableStock : $qty;
                         $userCart->items()->create([
                             'product_id' => $pid,
                             'quantity' => $qtyToAdd,
-                            'price' => $product->price,
+                            'price' => $itemPrice,
                             'image' => $product->image,
                             'product_weight' => $product->weight ?: '0',
+                            'meta_data' => $metaData,
                         ]);
                     }
                 }
@@ -515,10 +622,15 @@ class CartController extends Controller
         }
 
         return response()->json([
-            'success' => false,
-            'message' => 'Cart not found',
+            'success' => true,
+            'message' => 'Cart already empty',
             'cart' => ['items' => [], 'items_count' => 0, 'total' => 0],
         ]);
+    }
+
+    public function clear(Request $request): JsonResponse
+    {
+        return $this->empty($request);
     }
 
     public function cartupdate(Request $request): JsonResponse

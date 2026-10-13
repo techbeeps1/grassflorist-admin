@@ -96,6 +96,9 @@ class Order extends Model
         'odoo_invoice_pdf_path',
         'odoo_invoice_pdf_url',
         'odoo_error',
+        'subscription_id',
+        'subscription_delivery_id',
+        'is_recurring_order',
     ];
 
     protected $casts = [
@@ -104,6 +107,7 @@ class Order extends Model
         'ordered_at' => 'datetime',
         'odoo_synced_at' => 'datetime',
         'meta_data' => 'array',
+        'is_recurring_order' => 'boolean',
         'subtotal' => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'tax_amount' => 'decimal:2',
@@ -111,6 +115,16 @@ class Order extends Model
         'delivery_amount' => 'decimal:2',
         'total_amount' => 'decimal:2',
     ];
+
+    public function subscription(): BelongsTo
+    {
+        return $this->belongsTo(Subscription::class);
+    }
+
+    public function subscriptionDelivery(): BelongsTo
+    {
+        return $this->belongsTo(SubscriptionDelivery::class);
+    }
 
     public function isPaid(): bool
     {

@@ -89,15 +89,37 @@ class CheckoutController extends Controller
                     if ($pid > 0) {
                         $p = Product::find($pid);
                         if ($p) {
-                            CartItem::updateOrCreate(
-                                ['cart_id' => $cart->id, 'product_id' => $pid],
-                                [
+                            $itemMeta = $reqItem['meta_data'] ?? null;
+                            $isSub = !empty($itemMeta['is_subscription']) || !empty($reqItem['is_subscription']);
+                            $existingItem = CartItem::where('cart_id', $cart->id)
+                                ->where('product_id', $pid)
+                                ->when($isSub && !empty($itemMeta['frequency']), function ($q) use ($itemMeta) {
+                                    return $q->whereJsonContains('meta_data->frequency', $itemMeta['frequency']);
+                                })
+                                ->first();
+
+                            $unitPrice = $existingItem ? $existingItem->price : ($reqItem['price'] ?? (float)$p->price);
+                            $metaToSave = $itemMeta ?? ($existingItem ? $existingItem->meta_data : null);
+
+                            if ($existingItem) {
+                                $existingItem->update([
                                     'quantity' => $qty,
-                                    'price' => (float)$p->price,
+                                    'price' => (float)$unitPrice,
+                                    'meta_data' => $metaToSave,
                                     'image' => is_array($p->image) ? reset($p->image) : ($p->image ?: ''),
                                     'product_weight' => $p->weight ?: '0',
-                                ]
-                            );
+                                ]);
+                            } else {
+                                CartItem::create([
+                                    'cart_id' => $cart->id,
+                                    'product_id' => $pid,
+                                    'quantity' => $qty,
+                                    'price' => (float)$unitPrice,
+                                    'meta_data' => $metaToSave,
+                                    'image' => is_array($p->image) ? reset($p->image) : ($p->image ?: ''),
+                                    'product_weight' => $p->weight ?: '0',
+                                ]);
+                            }
                         }
                     }
                 }
@@ -368,51 +390,37 @@ class CheckoutController extends Controller
             $metaData['sar_subtotal'] = (float)$subtotal;
             $metaData['usd_subtotal'] = round((float)$subtotal * $exchangeRate, 2);
 
-            // 🛑 1. If order was ALREADY PAID, do NOT create a new order or attempt payment again!
-            $alreadyPaidOrder = null;
-            if (!empty($request->order_number)) {
-                $alreadyPaidOrder = Order::where('order_number', $request->order_number)
-                    ->whereIn('payment_status', ['paid', 'completed'])
-                    ->first();
-            }
-            if (!$alreadyPaidOrder && !empty($request->session_id)) {
-                $alreadyPaidOrder = Order::where('session_id', $request->session_id)
-                    ->whereIn('payment_status', ['paid', 'completed'])
-                    ->where('created_at', '>=', now()->subHours(24))
-                    ->latest('id')
-                    ->first();
-            }
+            // 🛑 Check if order contains subscription items
+            $hasSubscription = $cartItems->contains(function ($item) {
+                $meta = is_array($item->meta_data)
+                    ? $item->meta_data
+                    : (is_string($item->meta_data) ? json_decode($item->meta_data, true) : null);
+                return !empty($meta['is_subscription']);
+            });
 
-            if ($alreadyPaidOrder) {
+            // Tabby and Tamara BNPL do not support automated recurring token debits for subscriptions
+            if ($hasSubscription && in_array($paymentMethod, ['tabby', 'tamara'])) {
+                $isAr = ($orderLanguage === 'ar');
                 return response()->json([
-                    'message' => 'Order has already been paid successfully',
-                    'already_paid' => true,
-                    'order' => $alreadyPaidOrder->fresh(['items']),
-                    'order_number' => $alreadyPaidOrder->order_number,
-                    'requires_payment' => false,
-                    'payment_status' => 'paid',
-                ]);
+                    'message' => $isAr
+                        ? 'خدمات التقسيط تابي وتمارا غير متوفرة لطلبات الاشتراكات الدورية. يرجى اختيار بطاقة مدى، البطاقة الائتمانية، أو الدفع عند الاستلام.'
+                        : 'Tabby and Tamara BNPL services are not available for recurring subscriptions. Please select Mada, Credit Card, or Cash on Delivery.',
+                    'error' => 'gateway_not_supported_for_subscriptions',
+                ], 422);
             }
 
-            // 🔁 2. Order Re-use Rules:
-            // - User payment page se back aaya / 1 hr baad retry / payment fail retry: REUSE pending order
-            // - User ne quantity badli / items add-remove / address badla: UPDATE items & address on SAME order ID
-            // - Order cancel ya expire (> 24 hr) ho gaya: CREATE NEW ORDER (do not reuse)
+            // 🔁 Order Re-use Rules:
+            // - If the client explicitly sent an unpaid draft `order_number` (pending/payment_pending/failed),
+            //   update and reuse it so the user can switch payment methods or update details without spamming IDs.
+            // - If the sent order_number is ALREADY PAID or completed, NEVER reuse it and NEVER block the user:
+            //   it means the user is placing a new order! A fresh order ID must be generated.
+            // - NEVER search or match past orders by session_id alone! Each new checkout gets a fresh order ID.
             $existingOrder = null;
             if (!empty($request->order_number)) {
-                $existingOrder = Order::where('order_number', $request->order_number)
-                    ->whereIn('payment_status', ['pending', 'payment_pending', 'failed'])
-                    ->whereNotIn('status', ['cancelled', 'completed', 'refunded', 'expired'])
-                    ->where('created_at', '>=', now()->subHours(24))
-                    ->first();
-            }
-            if (!$existingOrder && !empty($request->session_id)) {
-                $existingOrder = Order::where('session_id', $request->session_id)
-                    ->whereIn('payment_status', ['pending', 'payment_pending', 'failed'])
-                    ->whereNotIn('status', ['cancelled', 'completed', 'refunded', 'expired'])
-                    ->where('created_at', '>=', now()->subHours(24))
-                    ->latest('id')
-                    ->first();
+                $candidateOrder = Order::where('order_number', $request->order_number)->first();
+                if ($candidateOrder && in_array($candidateOrder->payment_status, ['pending', 'payment_pending', 'failed']) && !in_array($candidateOrder->status, ['cancelled', 'completed', 'refunded', 'expired'])) {
+                    $existingOrder = $candidateOrder;
+                }
             }
 
             $orderData = [
@@ -469,6 +477,8 @@ class CheckoutController extends Controller
                 ]);
             }
 
+            $createdSubIds = [];
+
             foreach ($cartItems as $item) {
                 $product_price = $this->calculateProductPriceWithCoupon($item, $request->coupon_code, $subtotal);
                 
@@ -490,6 +500,10 @@ class CheckoutController extends Controller
                 $itemSubtotal = $product_price * $item->quantity;
                 $itemTax = round($itemSubtotal * 0.15, 2);
 
+                $itemMeta = is_array($item->meta_data)
+                    ? $item->meta_data
+                    : (is_string($item->meta_data) ? json_decode($item->meta_data, true) : null);
+
                 DB::table('order_items')->insert([
                     'order_id' => $order->id,
                     'product_id' => $item->product_id,
@@ -504,9 +518,84 @@ class CheckoutController extends Controller
                     'total' => $itemSubtotal,
                     'payment_method' => $paymentMethod,
                     'vendor_id' => is_numeric($vendorId) ? (int)$vendorId : null,
+                    'meta_data' => !empty($itemMeta) ? json_encode($itemMeta) : null,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+
+                // ⚡ Handle Subscription Item: Create Subscription & initial delivery schedule
+                if (!empty($itemMeta['is_subscription'])) {
+                    $customerId = $user ? $user->id : (auth('customer')->id() ?? null);
+                    if (!$customerId && !empty($order->email)) {
+                        $cust = Customer::where('email', strtolower($order->email))
+                            ->orWhere('phone', $order->customer_phone)
+                            ->first();
+                        if (!$cust) {
+                            $cust = Customer::create([
+                                'first_name' => $order->first_name ?: 'Subscriber',
+                                'last_name' => $order->last_name ?: '',
+                                'email' => strtolower($order->email),
+                                'phone' => $order->customer_phone,
+                                'address' => $order->address,
+                                'city' => $order->city ?: 'Jeddah',
+                                'password' => \Illuminate\Support\Facades\Hash::make(\Illuminate\Support\Str::random(12)),
+                            ]);
+                        }
+                        $customerId = $cust->id;
+                    }
+
+                    if ($customerId) {
+                        try {
+                            $subService = app(\App\Services\Subscriptions\SubscriptionService::class);
+                            $subscription = $subService->createSubscription($customerId, [
+                                'product_id' => $item->product_id,
+                                'quantity' => $item->quantity,
+                                'frequency' => $itemMeta['frequency'] ?? 'weekly',
+                                'duration_type' => $itemMeta['duration_type'] ?? 'until_cancelled',
+                                'start_date' => $deliveryDate,
+                                'delivery_time_slot' => $deliveryTime,
+                                'recipient_name' => $recipientName,
+                                'recipient_phone' => $recipientPhone,
+                                'address' => $order->address,
+                                'address_2' => $order->address_2,
+                                'city' => $order->city ?: 'Jeddah',
+                                'district' => $order->district,
+                                'zip_code' => $order->zip_code,
+                                'card_message' => $deliveryMessage,
+                                'payment_gateway' => $paymentMethod,
+                                'status' => $isCod ? 'active' : 'pending_payment',
+                            ]);
+
+                            $firstDelivery = $subscription->deliveries()->orderBy('delivery_number', 'asc')->first() ?? $subscription->deliveries()->first();
+                            if ($firstDelivery) {
+                                $firstDelivery->update([
+                                    'order_id' => $order->id,
+                                    'payment_status' => $isCod ? 'cod_pending' : 'pending',
+                                    'delivery_status' => 'processing',
+                                ]);
+                            }
+
+                            if (empty($order->subscription_id)) {
+                                $order->update([
+                                    'subscription_id' => $subscription->id,
+                                    'subscription_delivery_id' => $firstDelivery ? $firstDelivery->id : null,
+                                    'is_recurring_order' => false,
+                                ]);
+                            }
+
+                            $createdSubIds[] = $subscription->id;
+                        } catch (\Throwable $subEx) {
+                            \Log::error('Subscription creation in checkout failed: ' . $subEx->getMessage());
+                        }
+                    }
+                }
+            }
+
+            if (!empty($createdSubIds)) {
+                $curMeta = is_array($order->meta_data) ? $order->meta_data : [];
+                $curMeta['has_subscription'] = true;
+                $curMeta['subscription_ids'] = $createdSubIds;
+                $order->update(['meta_data' => $curMeta]);
             }
 
             // Only clear cart and send confirmation email immediately if Cash on Delivery (COD)

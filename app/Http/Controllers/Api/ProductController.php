@@ -145,6 +145,11 @@ class ProductController extends Controller
             'category_ids' => array_values(array_map('intval', (array) $categoryIds)),
             'category_slugs' => array_values(array_unique($categorySlugs)),
             'categories' => $formattedCategories,
+            'is_subscription_enabled' => (bool) $product->is_subscription_enabled,
+            'subscription_discount_percentage' => (float) ($product->subscription_discount_percentage ?? 10.00),
+            'subscription_frequencies' => $product->subscription_frequencies ?? ['weekly', 'biweekly', 'monthly'],
+            'subscription_durations' => $product->subscription_durations ?? ['3_months', '6_months', '12_months', 'until_cancelled'],
+            'subscription_min_duration' => $product->subscription_min_duration ?? '3_months',
         ];
     }
 
@@ -248,6 +253,11 @@ class ProductController extends Controller
             'quantity' => $quantity,
             'in_stock' => $quantity > 0,
             'is_visible' => (bool) $product->is_visible,
+            'is_subscription_enabled' => (bool) $product->is_subscription_enabled,
+            'subscription_discount_percentage' => (float) ($product->subscription_discount_percentage ?? 10.00),
+            'subscription_frequencies' => $product->subscription_frequencies ?? ['weekly', 'biweekly', 'monthly'],
+            'subscription_durations' => $product->subscription_durations ?? ['3_months', '6_months', '12_months', 'until_cancelled'],
+            'subscription_min_duration' => $product->subscription_min_duration ?? '3_months',
             'image' => $imageUrl ?: $imagePath,
             'image_path' => $imagePath,
             'gallery' => $galleryUrls,

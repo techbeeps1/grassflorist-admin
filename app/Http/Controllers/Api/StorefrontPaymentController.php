@@ -110,6 +110,15 @@ class StorefrontPaymentController extends Controller
             ], 400);
         }
 
+        $isSubOrder = !empty($order->subscription_id) || !empty($order->meta_data['has_subscription']);
+        if ($isSubOrder && in_array(strtolower($request->payment_gateway), ['tabby', 'tamara'])) {
+            return response()->json([
+                'status' => 'error',
+                'success' => false,
+                'message' => 'Tabby and Tamara are not available for subscription orders. Please use Mada, Credit Card, or Cash on Delivery.',
+            ], 422);
+        }
+
         $service = PaymentManager::resolveService($request->payment_gateway);
         if (!$service) {
             return response()->json(['status' => 'error', 'message' => 'Payment gateway not supported or inactive.'], 400);
@@ -159,8 +168,10 @@ class StorefrontPaymentController extends Controller
             ?? $order->payment_method
             ?? 'hyperpay';
 
-        // ⚡ If order is ALREADY paid (via webhook or earlier call), return immediately (0ms delay!)
+        // ⚡ If order is ALREADY paid (via webhook or earlier call), ensure subscriptions are activated and return immediately
         if ($order->payment_status === 'paid') {
+            PaymentManager::activateOrderSubscriptions($order, $order->payment_method);
+            PaymentManager::clearOrderCart($order);
             $freshOrder = $order->fresh(['items']);
             return response()->json([
                 'status' => 'success',
@@ -208,6 +219,54 @@ class StorefrontPaymentController extends Controller
         if (!empty($res['is_paid'])) {
             PaymentManager::markOrderAsPaid($order, $res['transaction_id'] ?? $refId, $gateway, $res['raw'] ?? [], 'FRONTEND_VERIFY');
             $order->update(['payment_method' => strtolower($gateway)]);
+
+            // ⚡ Recurring Subscription Token Activation (supports single or multiple subscriptions in order)
+            $subIds = [];
+            if (!empty($order->subscription_id)) {
+                $subIds[] = $order->subscription_id;
+            }
+            if (!empty($order->meta_data['subscription_ids']) && is_array($order->meta_data['subscription_ids'])) {
+                $subIds = array_unique(array_merge($subIds, $order->meta_data['subscription_ids']));
+            }
+
+            foreach ($subIds as $sId) {
+                $sub = \App\Models\Subscription::find($sId);
+                if ($sub) {
+                    $raw = $res['raw'] ?? [];
+                    $regId = $raw['registrationId'] ?? $raw['id'] ?? null;
+                    $cardDetails = [
+                        'brand' => $raw['paymentBrand'] ?? $brand,
+                        'last4' => $raw['card']['last4Digits'] ?? null,
+                        'expiry_month' => $raw['card']['expiryMonth'] ?? null,
+                        'expiry_year' => $raw['card']['expiryYear'] ?? null,
+                    ];
+
+                    $subUpdates = [
+                        'status' => 'active',
+                        'consecutive_failed_payments' => 0,
+                    ];
+                    if (!empty($regId)) {
+                        $subUpdates['payment_token'] = $regId;
+                        $subUpdates['payment_token_details'] = $cardDetails;
+                    }
+                    $sub->update($subUpdates);
+                    $sub->logActivity('initial_payment_verified', "Initial payment verified for order #{$order->order_number}. Subscription activated.", [
+                        'order_id' => $order->id,
+                        'transaction_id' => $res['transaction_id'] ?? $refId,
+                    ]);
+                }
+            }
+
+            if (!empty($order->subscription_delivery_id)) {
+                $del = \App\Models\SubscriptionDelivery::find($order->subscription_delivery_id);
+                if ($del) {
+                    $del->update([
+                        'delivery_status' => 'processing',
+                        'payment_status' => 'paid',
+                        'payment_reference' => $res['transaction_id'] ?? $refId,
+                    ]);
+                }
+            }
         } else {
             \App\Models\PaymentLog::create([
                 'order_id' => $order->id,

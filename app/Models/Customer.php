@@ -86,4 +86,14 @@ class Customer extends Authenticatable implements CanResetPasswordContract, JWTS
         $notificationService = app(\App\Services\Notifications\NotificationService::class);
         $notificationService->sendPasswordResetNotification($this, $resetUrl, (string)$token, $locale);
     }
+
+    public function subscriptions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Subscription::class, 'customer_id');
+    }
+
+    public function activeSubscriptions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Subscription::class, 'customer_id')->where('status', 'active');
+    }
 }

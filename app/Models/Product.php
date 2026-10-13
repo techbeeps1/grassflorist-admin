@@ -45,7 +45,12 @@ class Product extends Model
         'meta_data',
         'updated_by',
         'published_at',
-        'vendor_id'
+        'vendor_id',
+        'is_subscription_enabled',
+        'subscription_discount_percentage',
+        'subscription_frequencies',
+        'subscription_durations',
+        'subscription_min_duration',
     ];
 
     protected array $translatable = [
@@ -62,6 +67,10 @@ class Product extends Model
         'category_id' => 'array',
         'meta_data' => 'array',
         'is_visible' => 'boolean',  
+        'is_subscription_enabled' => 'boolean',
+        'subscription_discount_percentage' => 'decimal:2',
+        'subscription_frequencies' => 'array',
+        'subscription_durations' => 'array',
         'published_at' => 'datetime', 
     ];
 
@@ -208,5 +217,10 @@ class Product extends Model
                 $product->updated_by = auth()->id();
             }
         });
+    }
+
+    public function subscriptions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Subscription::class);
     }
 }

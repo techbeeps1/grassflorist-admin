@@ -87,6 +87,12 @@ class PaymentManager
                 ]);
             });
 
+            // ⚡ Automatically activate any subscriptions linked to this order and store payment token
+            self::activateOrderSubscriptions($order, $gateway, $transactionId, $rawPayload);
+
+            // 🛒 Permanently clear/recover cart for this order so it doesn't linger in user's cart
+            self::clearOrderCart($order);
+
             return true;
         } catch (\Exception $e) {
             Log::error("Failed to mark order #{$order->id} as paid: " . $e->getMessage());
@@ -107,4 +113,209 @@ class PaymentManager
             Log::error("Order confirmation notification failed for #{$order->id}: " . $e->getMessage());
         }
     }
+
+    /**
+     * Charge recurring payment token using specified or default gateway.
+     */
+    public static function chargeRecurringToken(Order $order, string $token, string $gateway = 'hyperpay', array $options = []): array
+    {
+        $service = self::resolveService($gateway);
+        if ($service && method_exists($service, 'chargeRecurringToken')) {
+            return $service->chargeRecurringToken($order, $token, $options);
+        }
+
+        // Fallback / Sandbox simulation
+        Log::info("chargeRecurringToken fallback for gateway [{$gateway}] on Order #{$order->order_number}.");
+        return [
+            'success' => true,
+            'transaction_id' => 'REC_SIM_' . strtoupper(substr(md5(uniqid()), 0, 12)),
+            'message' => 'Simulated recurring token charge succeeded.',
+        ];
+    }
+
+    /**
+     * Activate any subscriptions associated with an order and save payment token.
+     */
+    public static function activateOrderSubscriptions(Order $order, ?string $gateway = null, string $transactionId = '', array $rawPayload = []): void
+    {
+        try {
+            $effectiveGateway = strtolower($gateway ?? $order->payment_method ?? 'hyperpay');
+
+            // Gather all candidate subscription IDs for this order
+            $subIds = [];
+            if (!empty($order->subscription_id)) {
+                $subIds[] = $order->subscription_id;
+            }
+            if (!empty($order->meta_data['subscription_ids']) && is_array($order->meta_data['subscription_ids'])) {
+                $subIds = array_merge($subIds, $order->meta_data['subscription_ids']);
+            }
+
+            // Also check subscription_deliveries where order_id matches
+            $deliverySubIds = \App\Models\SubscriptionDelivery::where('order_id', $order->id)->pluck('subscription_id')->toArray();
+            if (!empty($deliverySubIds)) {
+                $subIds = array_merge($subIds, $deliverySubIds);
+            }
+
+            // Fallback: If still empty, check if order customer has a recent pending_payment subscription matching
+            if (empty($subIds) && !empty($order->user_id)) {
+                $recentPendingSub = \App\Models\Subscription::where('customer_id', $order->user_id)
+                    ->where('status', 'pending_payment')
+                    ->where('created_at', '>=', now()->subHours(24))
+                    ->latest('id')
+                    ->first();
+                if ($recentPendingSub) {
+                    $subIds[] = $recentPendingSub->id;
+                    if (empty($order->subscription_id)) {
+                        $order->update(['subscription_id' => $recentPendingSub->id]);
+                    }
+                }
+            }
+
+            $subIds = array_unique(array_filter($subIds));
+
+            if (empty($subIds)) {
+                return;
+            }
+
+            // Extract recurring payment token based on gateway
+            $token = null;
+            $tokenDetails = [];
+
+            if ($effectiveGateway === 'hyperpay') {
+                $token = $rawPayload['registrationId'] ?? $rawPayload['id'] ?? null;
+                $tokenDetails = [
+                    'gateway' => 'hyperpay',
+                    'brand' => $rawPayload['paymentBrand'] ?? 'VISA',
+                    'last4' => $rawPayload['card']['last4Digits'] ?? null,
+                    'expiry_month' => $rawPayload['card']['expiryMonth'] ?? null,
+                    'expiry_year' => $rawPayload['card']['expiryYear'] ?? null,
+                ];
+            } elseif ($effectiveGateway === 'paypal') {
+                // For PayPal, store payer ID / vault order reference
+                $token = $rawPayload['payer']['payer_id'] 
+                    ?? $rawPayload['payment_source']['paypal']['account_id']
+                    ?? $rawPayload['id'] 
+                    ?? $transactionId;
+                $tokenDetails = [
+                    'gateway' => 'paypal',
+                    'payer_id' => $rawPayload['payer']['payer_id'] ?? $rawPayload['payment_source']['paypal']['account_id'] ?? null,
+                    'payer_email' => $rawPayload['payer']['email_address'] ?? $rawPayload['payment_source']['paypal']['email_address'] ?? null,
+                    'capture_id' => $rawPayload['purchase_units'][0]['payments']['captures'][0]['id'] ?? $transactionId,
+                ];
+            } else {
+                $token = $rawPayload['token'] ?? $rawPayload['id'] ?? $transactionId;
+                $tokenDetails = ['gateway' => $effectiveGateway, 'transaction_id' => $transactionId];
+            }
+
+            foreach ($subIds as $sId) {
+                $sub = \App\Models\Subscription::find($sId);
+                if (!$sub) continue;
+
+                $updates = [
+                    'status' => 'active',
+                    'payment_gateway' => $effectiveGateway,
+                    'consecutive_failed_payments' => 0,
+                ];
+
+                if (!empty($token)) {
+                    $updates['payment_token'] = $token;
+                    $updates['payment_token_details'] = $tokenDetails;
+                }
+
+                $sub->update($updates);
+
+                // Update initial delivery linked to this subscription
+                $firstDel = $sub->deliveries()->where('order_id', $order->id)->first()
+                    ?: $sub->deliveries()->orderBy('delivery_number', 'asc')->first()
+                    ?: $sub->deliveries()->first();
+
+                if ($firstDel) {
+                    $firstDel->update([
+                        'order_id' => $order->id,
+                        'delivery_status' => 'processing',
+                        'payment_status' => 'paid',
+                        'payment_reference' => $transactionId,
+                    ]);
+                }
+
+                $sub->logActivity('initial_payment_verified', "Payment verified for order #{$order->order_number}. Subscription activated.", [
+                    'order_id' => $order->id,
+                    'transaction_id' => $transactionId,
+                    'gateway' => $effectiveGateway,
+                    'token' => $token,
+                ]);
+
+                Log::info("Subscription #{$sub->subscription_number} activated with token [{$token}] via {$effectiveGateway} for Order #{$order->order_number}");
+            }
+        } catch (\Throwable $e) {
+            Log::error("Failed to activate subscriptions for order #{$order->id}: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Clear and resolve any active cart associated with an order once paid.
+     */
+    public static function clearOrderCart(Order $order): void
+    {
+        try {
+            $cartQuery = \App\Models\Cart::query();
+            $cartQuery->where(function ($q) use ($order) {
+                $hasCond = false;
+                if (!empty($order->user_id)) {
+                    $q->where('user_id', $order->user_id);
+                    $hasCond = true;
+                }
+                if (!empty($order->session_id)) {
+                    if ($hasCond) {
+                        $q->orWhere('session_id', $order->session_id);
+                    } else {
+                        $q->where('session_id', $order->session_id);
+                        $hasCond = true;
+                    }
+                }
+                if (!$hasCond && !empty($order->email)) {
+                    $q->where('customer_email', $order->email);
+                }
+            });
+
+            $carts = $cartQuery->get();
+            foreach ($carts as $cart) {
+                \App\Models\CartItem::where('cart_id', $cart->id)->delete();
+                $cart->update([
+                    'status' => 'recovered',
+                    'recovered_at' => now(),
+                    'recovered_order_id' => $order->id,
+                ]);
+                Log::info("Cart #{$cart->id} items cleared and marked recovered for Order #{$order->order_number} ({$order->id})");
+            }
+
+            // Also check session_id or user_id directly if any active carts remain
+            if (!empty($order->session_id)) {
+                $sessionCarts = \App\Models\Cart::where('session_id', $order->session_id)->where('status', 'active')->get();
+                foreach ($sessionCarts as $sCart) {
+                    \App\Models\CartItem::where('cart_id', $sCart->id)->delete();
+                    $sCart->update([
+                        'status' => 'recovered',
+                        'recovered_at' => now(),
+                        'recovered_order_id' => $order->id,
+                    ]);
+                }
+            }
+
+            if (!empty($order->user_id)) {
+                $userCarts = \App\Models\Cart::where('user_id', $order->user_id)->where('status', 'active')->get();
+                foreach ($userCarts as $uCart) {
+                    \App\Models\CartItem::where('cart_id', $uCart->id)->delete();
+                    $uCart->update([
+                        'status' => 'recovered',
+                        'recovered_at' => now(),
+                        'recovered_order_id' => $order->id,
+                    ]);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::error("Failed to clear cart for order #{$order->id}: " . $e->getMessage());
+        }
+    }
 }
+

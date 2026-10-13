@@ -94,6 +94,11 @@ class HyperPayService implements PaymentGatewayInterface
             'billing.postcode' => $order->zip_code ?? '22231',
         ];
 
+        // ⚡ If order contains recurring subscriptions, request card token registration
+        if (!empty($order->subscription_id) || !empty($order->meta_data['has_subscription'])) {
+            $params['createRegistration'] = 'true';
+        }
+
         try {
             $response = Http::timeout(5)
                 ->withToken($token)
@@ -261,5 +266,69 @@ class HyperPayService implements PaymentGatewayInterface
             'transaction_id' => $payload['id'] ?? null,
             'raw' => $payload,
         ];
+    }
+
+    /**
+     * Charge a saved recurring registration token via HyperPay OPPWA (MIT Repeated Transaction).
+     */
+    public function chargeRecurringToken(Order $order, string $registrationId, array $options = []): array
+    {
+        $brand = $options['payment_brand'] ?? $order->payment_method ?? 'visa';
+        $entityId = $this->getEntityId($brand);
+        $token = $this->getAccessToken();
+
+        if (empty($token) || empty($entityId) || empty($registrationId)) {
+            return [
+                'success' => false,
+                'message' => 'HyperPay credentials or registration token missing.',
+            ];
+        }
+
+        $params = [
+            'entityId' => $entityId,
+            'amount' => number_format((float)($order->sar_amount ?: $order->total_amount), 2, '.', ''),
+            'currency' => 'SAR',
+            'paymentType' => 'DB',
+            'merchantTransactionId' => (string)($order->order_number ?? $order->id),
+            'standingInstruction.mode' => 'REPEATED',
+            'standingInstruction.type' => 'RECURRING',
+            'standingInstruction.source' => 'MIT',
+        ];
+
+        try {
+            $url = "{$this->baseUrl}/v1/registrations/{$registrationId}/payments";
+            $response = Http::timeout(10)->withToken($token)->asForm()->post($url, $params);
+            $data = $response->json();
+
+            $resultCode = $data['result']['code'] ?? '';
+            $isSuccessful = (bool)preg_match('/^(000\.000\.|000\.100\.1|000\.[36]|000\.400\.[0-2])/', $resultCode);
+
+            PaymentLog::create([
+                'order_id' => $order->id,
+                'order_number' => $order->order_number ?? (string)$order->id,
+                'gateway' => 'hyperpay',
+                'event_type' => 'recurring_charge',
+                'status' => $isSuccessful ? 'success' : 'failed',
+                'razorpay_payment_id' => $data['id'] ?? null,
+                'amount' => $order->total_amount,
+                'message' => $isSuccessful
+                    ? "HyperPay recurring charge succeeded: {$data['id']}"
+                    : ("HyperPay recurring charge declined: " . ($data['result']['description'] ?? 'Declined')),
+                'payload' => $data,
+            ]);
+
+            return [
+                'success' => $isSuccessful,
+                'transaction_id' => $data['id'] ?? null,
+                'message' => $data['result']['description'] ?? ($isSuccessful ? 'Payment successful' : 'Declined'),
+                'raw' => $data,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('HyperPay chargeRecurringToken error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => 'HyperPay recurring charge exception: ' . $e->getMessage(),
+            ];
+        }
     }
 }
