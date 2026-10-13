@@ -47,6 +47,7 @@ return [
     'woocommerce' => [
         'url' => env('WOOCOMMERCE_STORE_URL', 'https://grassflorist.com'),
         'consumer_key' => env('WOOCOMMERCE_CONSUMER_KEY'),
+        'consumer_secret' => env('WOOCOMMERCE_CONSUMER_SECRET'),
         'verify_ssl' => env('WOOCOMMERCE_VERIFY_SSL', false),
     ],
     'msegat' => [
