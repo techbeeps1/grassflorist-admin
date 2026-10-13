@@ -1348,6 +1348,48 @@ class StoreImportService
             return $cleaned;
         }
 
+        // Preserve WordPress uploads subpath (e.g. 2025/10/103-4.png) to prevent basename collisions across dates/products
+        $subPath = null;
+        if (preg_match('#wp-content/uploads/(.+)$#i', $url, $m)) {
+            $subPath = urldecode($m[1]);
+        }
+
+        if ($subPath) {
+            $subDir = dirname($subPath);
+            $subFile = basename($subPath);
+            $infoSub = pathinfo($subFile);
+            $ext = strtolower($infoSub['extension'] ?? 'jpg');
+            if (empty($ext) || strlen($ext) > 5) {
+                $ext = 'jpg';
+            }
+            $fileSlug = Str::slug($infoSub['filename'] ?? 'file');
+            if (empty($fileSlug)) {
+                $fileSlug = 'media-' . substr(md5($url), 0, 10);
+            }
+
+            $targetDir = trim($directory, '/') . ($subDir !== '.' ? '/' . trim($subDir, '/') : '');
+            $structuredRelativePath = "{$targetDir}/{$fileSlug}.{$ext}";
+            $rawRelativePath = trim($directory, '/') . '/' . ltrim($subPath, '/');
+
+            // 1. Check if structured local file exists
+            if ($disk->exists($structuredRelativePath) && $disk->size($structuredRelativePath) > 50) {
+                return $structuredRelativePath;
+            }
+            if ($disk->exists($rawRelativePath) && $disk->size($rawRelativePath) > 50) {
+                return $rawRelativePath;
+            }
+
+            // 2. Download directly to structured relative path
+            if ($downloadIfMissing) {
+                $downloaded = $this->downloadAndSaveImage($url, $structuredRelativePath);
+                if ($downloaded) {
+                    return $downloaded;
+                }
+            }
+
+            return null;
+        }
+
         $parsedPath = parse_url($url, PHP_URL_PATH);
         if (! $parsedPath) {
             return null;

@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 
 class StoreDownloadImagesCommand extends Command
 {
-    protected $signature = 'store:download-images {--force : Re-download images even if file already exists locally}';
+    protected $signature = 'store:download-images {--force : Re-download images even if file already exists locally} {--from-wc : Re-sync authentic image URLs directly from WooCommerce API for all products}';
     protected $description = 'Download all product, gallery, and category images from live site to local public storage';
 
     public function handle(): int
@@ -24,6 +24,7 @@ class StoreDownloadImagesCommand extends Command
         $this->info('===========================================================');
 
         $force = (bool) $this->option('force');
+        $fromWc = (bool) $this->option('from-wc');
         $disk = Storage::disk('public');
 
         // Ensure directories exist
@@ -36,7 +37,11 @@ class StoreDownloadImagesCommand extends Command
         $this->newLine();
 
         // 2. Download Product Featured & Gallery Images
-        $this->downloadProductImages($disk, $force);
+        if ($fromWc) {
+            $this->syncProductImagesFromWooCommerce($disk, $force);
+        } else {
+            $this->downloadProductImages($disk, $force);
+        }
         $this->newLine();
 
         $this->info('===========================================================');
@@ -44,6 +49,102 @@ class StoreDownloadImagesCommand extends Command
         $this->info('===========================================================');
 
         return Command::SUCCESS;
+    }
+
+    protected function syncProductImagesFromWooCommerce($disk, bool $force): void
+    {
+        $this->info('🔄 Fetching products directly from WooCommerce API to ensure 100% correct matching...');
+
+        $importService = new \App\Services\StoreImportService();
+        $reflection = new \ReflectionClass($importService);
+        $method = $reflection->getMethod('makeRequest');
+        $method->setAccessible(true);
+
+        $page = 1;
+        $totalProcessed = 0;
+        $featuredCount = 0;
+        $galleryCount = 0;
+
+        // First check total count
+        $firstRes = $method->invoke($importService, 'products', ['per_page' => 1, 'page' => 1]);
+        $totalCount = (int) ($firstRes->header('X-WP-Total') ?: 496);
+        $totalPages = (int) ($firstRes->header('X-WP-TotalPages') ?: ceil($totalCount / 100));
+
+        $bar = $this->output->createProgressBar($totalCount);
+        $bar->start();
+
+        while ($page <= $totalPages) {
+            $res = $method->invoke($importService, 'products', ['per_page' => 100, 'page' => $page]);
+            if (! $res->successful()) {
+                $this->error("Failed to fetch WC page {$page}");
+                break;
+            }
+
+            $wcProducts = $res->json() ?? [];
+            if (empty($wcProducts)) {
+                break;
+            }
+
+            foreach ($wcProducts as $wcItem) {
+                $sourceId = (int) ($wcItem['id'] ?? 0);
+                $sku = $wcItem['sku'] ?? '';
+                $images = $wcItem['images'] ?? [];
+
+                $product = Product::where('source_id', $sourceId)
+                    ->when(! empty($sku), fn ($q) => $q->orWhere('sku', $sku))
+                    ->first();
+
+                if ($product && ! empty($images)) {
+                    $dirty = false;
+
+                    // 1. Featured Image (First image in WC list)
+                    $featuredUrl = $images[0]['src'] ?? null;
+                    if ($featuredUrl) {
+                        $localFeatured = $this->downloadFile($featuredUrl, 'products', $disk, $force);
+                        if ($localFeatured && $product->image !== $localFeatured) {
+                            $product->image = $localFeatured;
+                            $dirty = true;
+                            $featuredCount++;
+                        }
+                    }
+
+                    // 2. Gallery Images
+                    $newGallery = [];
+                    foreach ($images as $img) {
+                        $imgUrl = $img['src'] ?? null;
+                        if ($imgUrl) {
+                            $localG = $this->downloadFile($imgUrl, 'products/gallery', $disk, $force);
+                            if ($localG) {
+                                $newGallery[] = $localG;
+                                $galleryCount++;
+                            }
+                        }
+                    }
+
+                    if (! empty($newGallery)) {
+                        $newGallery = array_values(array_unique($newGallery));
+                        if ($product->gallery !== $newGallery) {
+                            $product->gallery = $newGallery;
+                            $dirty = true;
+                        }
+                    }
+
+                    if ($dirty) {
+                        $product->save();
+                    }
+                }
+
+                $totalProcessed++;
+                $bar->advance();
+            }
+
+            $page++;
+            gc_collect_cycles();
+        }
+
+        $bar->finish();
+        $this->newLine();
+        $this->info("  -> Synced from WooCommerce: {$totalProcessed} products, {$featuredCount} featured updated, {$galleryCount} gallery images.");
     }
 
     protected function downloadCategoryImages($disk, bool $force): void
@@ -170,36 +271,54 @@ class StoreDownloadImagesCommand extends Command
             return null;
         }
 
-        // Clean and decode original filename
-        $parsedPath = parse_url($url, PHP_URL_PATH);
-        if (! $parsedPath) {
-            return null;
-        }
+        // Clean and decode original filename, preserving WordPress upload YYYY/MM subdirectories
+        if (preg_match('#wp-content/uploads/(.+)$#i', $url, $m)) {
+            $subPath = urldecode($m[1]);
+            $subDir = dirname($subPath);
+            $subFile = basename($subPath);
+            $info = pathinfo($subFile);
+            $name = Str::slug($info['filename'] ?? 'file');
+            if (empty($name)) {
+                $name = 'media-' . substr(md5($url), 0, 10);
+            }
+            $ext = strtolower($info['extension'] ?? 'jpg');
+            if (empty($ext) || strlen($ext) > 5) {
+                $ext = 'jpg';
+            }
+            $targetDir = trim($directory, '/') . ($subDir !== '.' ? '/' . trim($subDir, '/') : '');
+            $targetFilename = "{$name}.{$ext}";
+            $relativePath = "{$targetDir}/{$targetFilename}";
+        } else {
+            $parsedPath = parse_url($url, PHP_URL_PATH);
+            if (! $parsedPath) {
+                return null;
+            }
 
-        $originalFilename = basename($parsedPath);
-        $cleanFilename = urldecode($originalFilename);
+            $originalFilename = basename($parsedPath);
+            $cleanFilename = urldecode($originalFilename);
 
-        // Sanitize target filename
-        $info = pathinfo($cleanFilename);
-        $name = Str::slug($info['filename'] ?? 'file');
-        if (empty($name)) {
-            $name = 'media-' . substr(md5($url), 0, 10);
-        }
-        $ext = strtolower($info['extension'] ?? 'jpg');
-        if (empty($ext) || strlen($ext) > 5) {
-            $ext = 'jpg';
-        }
+            // Sanitize target filename
+            $info = pathinfo($cleanFilename);
+            $name = Str::slug($info['filename'] ?? 'file');
+            if (empty($name)) {
+                $name = 'media-' . substr(md5($url), 0, 10);
+            }
+            $ext = strtolower($info['extension'] ?? 'jpg');
+            if (empty($ext) || strlen($ext) > 5) {
+                $ext = 'jpg';
+            }
 
-        $targetFilename = "{$name}.{$ext}";
-        $relativePath = "{$directory}/{$targetFilename}";
+            $targetFilename = "{$name}.{$ext}";
+            $relativePath = "{$directory}/{$targetFilename}";
+        }
 
         // If file already exists locally and force is false, return relative path
-        if (! $force && $disk->exists($relativePath)) {
+        if (! $force && $disk->exists($relativePath) && $disk->size($relativePath) > 50) {
             return $relativePath;
         }
 
         // Ensure target directory exists on filesystem
-        $fullDirPath = storage_path('app/public/' . $directory);
+        $fullDirPath = storage_path('app/public/' . dirname($relativePath));
         if (! file_exists($fullDirPath)) {
             @mkdir($fullDirPath, 0775, true);
         }
