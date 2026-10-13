@@ -414,7 +414,7 @@ class OrderResource extends Resource
                                                 
                                                 Placeholder::make('delivery_amount')
                                                     ->label('COD')
-                                                    ->visible(fn ($record) => $record && (strtolower($record->payment_method ?? '') === 'cod' || ($record->delivery_amount ?? 0) > 0))
+                                                    ->visible(fn ($record) => $record && strtolower($record->payment_method ?? '') === 'cod' && ($record->delivery_amount ?? 0) > 0)
                                                     ->content(function ($record) {
                                                         return format_currency($record->delivery_amount ?? 0, 2);
                                                     }),
@@ -433,8 +433,14 @@ class OrderResource extends Resource
                                                         $isPaypal = strtolower((string)($record->payment_method ?? '')) === 'paypal';
                                                         if ($curr === 'USD' || $isPaypal) {
                                                             $rate = (float)($record->exchange_rate ?: 0.2667);
-                                                            $usdAmount = $record->currency_amount ? number_format((float)$record->currency_amount, 2) : number_format((float)$record->total_amount * $rate, 2);
-                                                            $sarAmount = $record->sar_amount ? number_format((float)$record->sar_amount, 2) : number_format((float)$record->total_amount, 2);
+                                                            if ($rate <= 0 || $rate >= 1.0) {
+                                                                $rate = 0.2667;
+                                                            }
+                                                            $sarTotal = (float)($record->sar_amount ?: $record->total_amount);
+                                                            $usdAmount = ($record->currency_amount && (float)$record->currency_amount < $sarTotal)
+                                                                ? number_format((float)$record->currency_amount, 2)
+                                                                : number_format($sarTotal * $rate, 2);
+                                                            $sarAmount = number_format($sarTotal, 2);
                                                             return "Paid in USD: \${$usdAmount} | Base: {$sarAmount} SAR (Locked Rate: 1 SAR = " . number_format($rate, 4) . " USD)";
                                                         }
                                                         return "Paid in SAR: " . format_currency($record->sar_amount ?: $record->total_amount, 2);
@@ -840,7 +846,7 @@ class OrderResource extends Resource
                                                                 <span class="row-val">' . format_currency($record->shipping_amount ?? 0, 2) . '</span>
                                                             </div>';
 
-                                                    if ($record && (strtolower($record->payment_method ?? '') === 'cod' || ($record->delivery_amount ?? 0) > 0)) {
+                                                    if ($record && strtolower($record->payment_method ?? '') === 'cod' && ($record->delivery_amount ?? 0) > 0) {
                                                         $html .= '<div class="order-summary-row">
                                                             <span>COD:</span>
                                                             <span class="row-val">' . format_currency($record->delivery_amount ?? 0, 2) . '</span>
@@ -875,9 +881,7 @@ class OrderResource extends Resource
                             ->badge(function (?Order $record) {
                                 if (!$record) return null;
                                 $actCount = \App\Models\OrderActivity::where('order_id', $record->id)->count();
-                                $notifCount = \App\Models\NotificationLog::where('order_id', $record->id)
-                                    ->orWhere('recipient', $record->email)
-                                    ->count();
+                                $notifCount = \App\Models\NotificationLog::where('order_id', $record->id)->count();
                                 $total = $actCount + $notifCount;
                                 return $total > 0 ? (string)$total : null;
                             })
@@ -912,7 +916,12 @@ class OrderResource extends Resource
                 Tables\Columns\TextColumn::make('full_name')
                     ->label('Customer Name')
                     ->getStateUsing(function ($record) {
-                        return ($record->first_name ?? '') . ' ' . ($record->last_name ?? '');
+                        $first = trim((string)($record->first_name ?? ''));
+                        $last = trim((string)($record->last_name ?? ''));
+                        if (!empty($first) && !empty($last) && str_ends_with(strtolower($first), strtolower($last))) {
+                            return $first;
+                        }
+                        return trim($first . ' ' . $last) ?: ($record->sender_name ?: '-');
                     })
                     ->sortable(['first_name', 'last_name'])
                     ->searchable(['first_name', 'last_name'])

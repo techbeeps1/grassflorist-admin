@@ -249,8 +249,22 @@ class NotificationService
 
     /**
      * Handle Order lifecycle notifications (Email & SMS to Customer and Admin)
+     * Automatically dispatches to the background queue by default for fast responses.
      */
-    public function sendOrderNotification(Order $order, string $eventKey, ?string $preferredLocale = null): void
+    public function sendOrderNotification(Order $order, string $eventKey, ?string $preferredLocale = null, bool $queue = true): void
+    {
+        if ($queue) {
+            \App\Jobs\SendOrderNotificationJob::dispatch($order->id, $eventKey, $preferredLocale);
+            return;
+        }
+
+        $this->sendOrderNotificationSync($order, $eventKey, $preferredLocale);
+    }
+
+    /**
+     * Synchronous worker logic for sending order email & SMS notifications.
+     */
+    public function sendOrderNotificationSync(Order $order, string $eventKey, ?string $preferredLocale = null): void
     {
         $emailTemplate = EmailTemplate::where('event_key', $eventKey)->first();
         $smsTemplate = SmsTemplate::where('event_key', $eventKey)->first();

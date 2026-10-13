@@ -124,12 +124,10 @@ class PaymentManager
             return $service->chargeRecurringToken($order, $token, $options);
         }
 
-        // Fallback / Sandbox simulation
-        Log::info("chargeRecurringToken fallback for gateway [{$gateway}] on Order #{$order->order_number}.");
+        Log::warning("chargeRecurringToken: gateway [{$gateway}] does not support recurring charges for Order #{$order->order_number}.");
         return [
-            'success' => true,
-            'transaction_id' => 'REC_SIM_' . strtoupper(substr(md5(uniqid()), 0, 12)),
-            'message' => 'Simulated recurring token charge succeeded.',
+            'success' => false,
+            'message' => "Payment gateway [{$gateway}] does not support automatic recurring debits.",
         ];
     }
 
@@ -191,13 +189,30 @@ class PaymentManager
                     'expiry_year' => $rawPayload['card']['expiryYear'] ?? null,
                 ];
             } elseif ($effectiveGateway === 'paypal') {
-                // For PayPal, store payer ID / vault order reference
-                $token = $rawPayload['payer']['payer_id'] 
+                $paypalSubId = null;
+                if (!empty($rawPayload['subscription_id']) && str_starts_with((string)$rawPayload['subscription_id'], 'I-')) {
+                    $paypalSubId = $rawPayload['subscription_id'];
+                } elseif (!empty($rawPayload['id']) && str_starts_with((string)$rawPayload['id'], 'I-')) {
+                    $paypalSubId = $rawPayload['id'];
+                } elseif (!empty($order->razorpay_order_id) && str_starts_with((string)$order->razorpay_order_id, 'I-')) {
+                    $paypalSubId = $order->razorpay_order_id;
+                }
+
+                $vaultToken = $rawPayload['payment_source']['paypal']['attributes']['vault']['id']
+                    ?? $rawPayload['payment_source']['card']['attributes']['vault']['id']
+                    ?? null;
+
+                $token = $paypalSubId
+                    ?? $vaultToken 
+                    ?? $rawPayload['payer']['payer_id'] 
                     ?? $rawPayload['payment_source']['paypal']['account_id']
                     ?? $rawPayload['id'] 
                     ?? $transactionId;
+
                 $tokenDetails = [
                     'gateway' => 'paypal',
+                    'subscription_id' => $paypalSubId,
+                    'vault_id' => $vaultToken,
                     'payer_id' => $rawPayload['payer']['payer_id'] ?? $rawPayload['payment_source']['paypal']['account_id'] ?? null,
                     'payer_email' => $rawPayload['payer']['email_address'] ?? $rawPayload['payment_source']['paypal']['email_address'] ?? null,
                     'capture_id' => $rawPayload['purchase_units'][0]['payments']['captures'][0]['id'] ?? $transactionId,
@@ -254,64 +269,42 @@ class PaymentManager
 
     /**
      * Clear and resolve any active cart associated with an order once paid.
+     * Optimized with batch queries for lightning-fast order verification.
      */
     public static function clearOrderCart(Order $order): void
     {
         try {
-            $cartQuery = \App\Models\Cart::query();
-            $cartQuery->where(function ($q) use ($order) {
-                $hasCond = false;
-                if (!empty($order->user_id)) {
-                    $q->where('user_id', $order->user_id);
-                    $hasCond = true;
-                }
-                if (!empty($order->session_id)) {
-                    if ($hasCond) {
-                        $q->orWhere('session_id', $order->session_id);
-                    } else {
-                        $q->where('session_id', $order->session_id);
+            $cartIds = \App\Models\Cart::query()
+                ->where(function ($q) use ($order) {
+                    $hasCond = false;
+                    if (!empty($order->user_id)) {
+                        $q->where('user_id', $order->user_id);
                         $hasCond = true;
                     }
-                }
-                if (!$hasCond && !empty($order->email)) {
-                    $q->where('customer_email', $order->email);
-                }
-            });
+                    if (!empty($order->session_id)) {
+                        if ($hasCond) {
+                            $q->orWhere('session_id', $order->session_id);
+                        } else {
+                            $q->where('session_id', $order->session_id);
+                            $hasCond = true;
+                        }
+                    }
+                    if (!$hasCond && !empty($order->email)) {
+                        $q->where('customer_email', $order->email);
+                    }
+                })
+                ->where('status', '!=', 'recovered')
+                ->pluck('id')
+                ->toArray();
 
-            $carts = $cartQuery->get();
-            foreach ($carts as $cart) {
-                \App\Models\CartItem::where('cart_id', $cart->id)->delete();
-                $cart->update([
+            if (!empty($cartIds)) {
+                \App\Models\CartItem::whereIn('cart_id', $cartIds)->delete();
+                \App\Models\Cart::whereIn('id', $cartIds)->update([
                     'status' => 'recovered',
                     'recovered_at' => now(),
                     'recovered_order_id' => $order->id,
                 ]);
-                Log::info("Cart #{$cart->id} items cleared and marked recovered for Order #{$order->order_number} ({$order->id})");
-            }
-
-            // Also check session_id or user_id directly if any active carts remain
-            if (!empty($order->session_id)) {
-                $sessionCarts = \App\Models\Cart::where('session_id', $order->session_id)->where('status', 'active')->get();
-                foreach ($sessionCarts as $sCart) {
-                    \App\Models\CartItem::where('cart_id', $sCart->id)->delete();
-                    $sCart->update([
-                        'status' => 'recovered',
-                        'recovered_at' => now(),
-                        'recovered_order_id' => $order->id,
-                    ]);
-                }
-            }
-
-            if (!empty($order->user_id)) {
-                $userCarts = \App\Models\Cart::where('user_id', $order->user_id)->where('status', 'active')->get();
-                foreach ($userCarts as $uCart) {
-                    \App\Models\CartItem::where('cart_id', $uCart->id)->delete();
-                    $uCart->update([
-                        'status' => 'recovered',
-                        'recovered_at' => now(),
-                        'recovered_order_id' => $order->id,
-                    ]);
-                }
+                Log::info("Carts [" . implode(',', $cartIds) . "] items cleared and marked recovered for Order #{$order->order_number} ({$order->id})");
             }
         } catch (\Throwable $e) {
             Log::error("Failed to clear cart for order #{$order->id}: " . $e->getMessage());

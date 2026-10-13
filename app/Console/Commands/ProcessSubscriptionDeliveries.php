@@ -16,12 +16,12 @@ class ProcessSubscriptionDeliveries extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'subscriptions:process-deliveries {--date= : Custom target delivery date (YYYY-MM-DD)} {--dry-run : Simulate without writing changes}';
+    protected $signature = 'subscriptions:process-deliveries {--date= : Custom target delivery date (YYYY-MM-DD)} {--lead-days=1 : Number of days in advance to process upcoming deliveries (default: 1 day before delivery)} {--dry-run : Simulate without writing changes}';
 
     /**
      * The console command description.
      */
-    protected $description = 'Process upcoming recurring subscription deliveries, generate orders, and charge payment tokens.';
+    protected $description = 'Process upcoming recurring subscription deliveries 1 day in advance, generate orders, and charge payment tokens.';
 
     /**
      * Execute the console command.
@@ -29,10 +29,11 @@ class ProcessSubscriptionDeliveries extends Command
     public function handle(SubscriptionService $subscriptionService)
     {
         $timezone = GlobalSetting::current()->timezone ?: 'Asia/Riyadh';
-        $targetDateStr = $this->option('date') ?: Carbon::now($timezone)->toDateString();
+        $leadDays = (int)($this->option('lead-days') ?? 1);
+        $targetDateStr = $this->option('date') ?: Carbon::now($timezone)->addDays($leadDays)->toDateString();
         $isDryRun = (bool)$this->option('dry-run');
 
-        $this->info("=== Processing Subscription Deliveries for Date: {$targetDateStr} (TZ: {$timezone}) ===");
+        $this->info("=== Processing Subscription Deliveries ({$leadDays} Day Advance Lead Time | Target Date: {$targetDateStr} | TZ: {$timezone}) ===");
         if ($isDryRun) {
             $this->warn('[DRY-RUN MODE ENABLED - No changes will be persisted]');
         }
@@ -91,7 +92,7 @@ class ProcessSubscriptionDeliveries extends Command
                         PaymentManager::markOrderAsPaid($order, $transactionId, $gateway, $paymentResult, 'RECURRING');
 
                         $delivery->update([
-                            'delivery_status' => 'delivered',
+                            'delivery_status' => 'processing',
                             'payment_status' => 'paid',
                             'payment_reference' => $transactionId,
                         ]);

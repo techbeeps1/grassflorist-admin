@@ -7,28 +7,21 @@
     // 1. Fetch activities from order_activities table
     $dbActivities = \App\Models\OrderActivity::where('order_id', $order->id)->get();
 
-    // 2. Fetch notifications from notification_logs (order_id match + historical fallback)
+    // 2. Fetch notifications from notification_logs (fast indexed query by order_id)
     $notifications = \App\Models\NotificationLog::where('order_id', $order->id)
-        ->orWhere(function ($q) use ($order, $orderNumber, $customerEmail, $customerPhone) {
-            $q->where(function ($sub) use ($customerEmail, $customerPhone) {
-                if (!empty($customerEmail)) {
-                    $sub->where('recipient', $customerEmail);
-                }
-                if (!empty($customerPhone)) {
-                    $cleanPhone = substr(preg_replace('/\D/', '', $customerPhone), -9);
-                    if (!empty($cleanPhone)) {
-                        $sub->orWhere('recipient', 'like', "%{$cleanPhone}%");
-                    }
-                }
-            })->where(function ($sub2) use ($orderNumber, $order) {
-                $sub2->where('content', 'like', "%#{$orderNumber}%")
-                     ->orWhere('content', 'like', "%#OR-{$order->id}%")
-                     ->orWhere('content', 'like', "%#{$order->id}%")
-                     ->orWhere('subject_or_sender', 'like', "%{$orderNumber}%");
-            });
-        })
         ->orderBy('created_at', 'asc')
         ->get();
+
+    // Fallback only if no notifications found by order_id
+    if ($notifications->isEmpty() && !empty($orderNumber)) {
+        $notifications = \App\Models\NotificationLog::where(function ($sub2) use ($orderNumber, $order) {
+            $sub2->where('content', 'like', "%#{$orderNumber}%")
+                 ->orWhere('content', 'like', "%#OR-{$order->id}%");
+        })
+        ->orderBy('created_at', 'asc')
+        ->limit(15)
+        ->get();
+    }
 
     // 3. Fetch payment logs
     $paymentLogs = \App\Models\PaymentLog::where('order_id', $order->id)

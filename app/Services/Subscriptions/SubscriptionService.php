@@ -203,7 +203,10 @@ class SubscriptionService
                 'address_2' => $payload['address_2'] ?? $customer->address_2,
                 'city' => $payload['city'] ?? $customer->city ?? 'Jeddah',
                 'district' => $payload['district'] ?? $customer->district,
+                'state' => $payload['state'] ?? 'Makkah',
+                'country' => $payload['country'] ?? 'Saudi Arabia',
                 'zip_code' => $payload['zip_code'] ?? $customer->zip_code,
+                'location_link' => $payload['location_link'] ?? null,
             ];
 
             $subscription = Subscription::create([
@@ -235,6 +238,7 @@ class SubscriptionService
                     'custom_dates' => $customDates,
                     'estimated_total_cycles' => $pricing['estimated_total_cycles'],
                     'projected_grand_total' => $pricing['projected_grand_total'],
+                    'initial_order_id' => $payload['initial_order_id'] ?? null,
                 ],
             ]);
 
@@ -334,57 +338,125 @@ class SubscriptionService
     }
 
     /**
-     * Generate an actual Order for a scheduled delivery cycle and process/link payment.
+     * Generate an actual Order for a scheduled delivery cycle, inherit complete customer/address details, and charge recurring payment token.
      */
-    public function generateOrderForDelivery(SubscriptionDelivery $delivery): Order
+    public function generateOrderForDelivery(SubscriptionDelivery $delivery, bool $autoCharge = true): Order
     {
-        return DB::transaction(function () use ($delivery) {
+        return DB::transaction(function () use ($delivery, $autoCharge) {
             $subscription = $delivery->subscription;
             $customer = $subscription->customer;
             $product = $subscription->product;
             $addr = $delivery->delivery_address ?: ($subscription->delivery_address ?? []);
 
-            $deliveryDate = $delivery->scheduled_date->toDateString();
-            $deliveryTime = $delivery->time_slot;
+            // 🔍 1. Find initial parent order to inherit all exact checkout preferences
+            $initialOrderId = $subscription->metadata['initial_order_id'] ?? null;
+            $initialOrder = null;
+            if ($initialOrderId) {
+                $initialOrder = Order::find($initialOrderId);
+            }
+            if (!$initialOrder) {
+                $initialOrder = Order::where('subscription_id', $subscription->id)
+                    ->where('is_recurring_order', false)
+                    ->orderBy('id', 'asc')
+                    ->first();
+            }
 
-            $shippingMethodName = 'Delivery Inside Jeddah';
+            // 👤 2. Fix Name Split & Customer Phone (Prevents duplicate last name e.g. "gurjeet singh singh")
+            $custFirst = $initialOrder?->first_name ?: ($customer?->first_name ?: '');
+            $custLast = $initialOrder?->last_name ?: ($customer?->last_name ?: '');
+            if (empty($custFirst)) {
+                $rawName = trim((string)($customer?->name ?: ($initialOrder?->sender_name ?: 'Valued Customer')));
+                $parts = array_values(array_filter(explode(' ', $rawName)));
+                $custFirst = $parts[0] ?? 'Valued';
+                $custLast = count($parts) > 1 ? implode(' ', array_slice($parts, 1)) : '';
+            }
+
+            $senderName = $initialOrder?->sender_name ?: ($customer?->name ?: trim("{$custFirst} {$custLast}"));
+            $recipientName = $addr['recipient_name'] ?? ($initialOrder?->recipient_name ?: ($customer?->name ?? 'Valued Customer'));
+            $recipientPhone = $addr['recipient_phone'] ?? ($initialOrder?->recipient_phone ?: ($customer?->phone ?? ''));
+            $customerPhone = $initialOrder?->customer_phone ?: ($customer?->phone ?: $recipientPhone);
+
+            // 📍 3. Fix Address, State, District, and Google Maps Location Link
+            $address = $addr['address'] ?? ($initialOrder?->address ?: 'Jeddah');
+            $address2 = $addr['address_2'] ?? ($initialOrder?->address_2 ?: null);
+            $city = $addr['city'] ?? ($initialOrder?->city ?: 'Jeddah');
+            $district = $addr['district'] ?? ($initialOrder?->district ?: null);
+            $state = $addr['state'] ?? ($initialOrder?->state ?: 'Makkah');
+            $country = $addr['country'] ?? ($initialOrder?->country ?: 'Saudi Arabia');
+            $zipCode = $addr['zip_code'] ?? ($initialOrder?->zip_code ?: '23434');
+            $locationLink = $addr['location_link'] ?? ($initialOrder?->location_link ?: null);
+
+            // 💱 4. Fix Currency & Locked Exchange Rate (PayPal USD Conversion)
+            $effectiveGateway = strtolower((string)($subscription->payment_gateway ?? ($initialOrder?->payment_method ?? 'hyperpay')));
+            $sarAmount = (float)$delivery->total_amount;
+            $exchangeRate = 1.0000;
+            $currency = 'SAR';
+            $currencyAmount = $sarAmount;
+
+            if ($effectiveGateway === 'paypal') {
+                $currency = 'USD';
+                $exchangeRate = (float)($initialOrder?->exchange_rate ?: 0.2667);
+                if ($exchangeRate <= 0 || $exchangeRate >= 1.0) {
+                    $exchangeRate = 0.2667;
+                }
+                $currencyAmount = round($sarAmount * $exchangeRate, 2);
+            }
+
+            $deliveryDate = $delivery->scheduled_date->toDateString();
+            $deliveryTime = $delivery->time_slot ?: ($initialOrder?->delivery_time ?: '11:00:00');
+            $shippingMethodName = $initialOrder?->shipping_method ?: 'Delivery Inside Jeddah';
 
             $order = Order::create([
                 'session_id' => 'sub_order_' . $delivery->id . '_' . time(),
                 'user_id' => $subscription->customer_id,
-                'email' => $customer?->email ?? 'customer@grassflorist.com',
-                'first_name' => $addr['recipient_name'] ?? ($customer?->first_name ?? 'Subscriber'),
-                'last_name' => $customer?->last_name ?? '',
-                'customer_phone' => $addr['recipient_phone'] ?? ($customer?->phone ?? ''),
-                'subtotal' => round($subscription->discounted_price * $subscription->quantity, 2),
+                'email' => $customer?->email ?? ($initialOrder?->email ?? 'customer@grassflorist.com'),
+                'first_name' => $custFirst,
+                'last_name' => $custLast,
+                'customer_phone' => $customerPhone,
+                'subtotal' => round($subscription->unit_price * $subscription->quantity, 2),
                 'discount_amount' => round(($subscription->unit_price - $subscription->discounted_price) * $subscription->quantity, 2),
                 'tax_amount' => $subscription->tax_amount,
                 'shipping_amount' => $subscription->delivery_fee,
-                'delivery_amount' => $subscription->delivery_fee,
-                'total_amount' => $delivery->total_amount,
-                'currency' => $subscription->currency ?? 'SAR',
-                'payment_method' => $subscription->payment_gateway ?? 'hyperpay',
+                'delivery_amount' => 0.00,
+                'total_amount' => $sarAmount,
+                'sar_amount' => $sarAmount,
+                'currency' => $currency,
+                'exchange_rate' => $exchangeRate,
+                'currency_amount' => $currencyAmount,
+                'payment_method' => $effectiveGateway,
                 'payment_status' => 'payment_pending',
                 'status' => 'pending',
-                'order_language' => 'en',
+                'order_language' => $initialOrder?->order_language ?? 'en',
                 'delivery_date' => $deliveryDate,
                 'delivery_time' => $deliveryTime,
-                'delivery_message' => $subscription->gift_message,
-                'sender_name' => $customer?->name ?? 'Grass Subscriber',
-                'recipient_name' => $addr['recipient_name'] ?? ($customer?->name ?? 'Subscriber'),
-                'recipient_phone' => $addr['recipient_phone'] ?? ($customer?->phone ?? ''),
-                'address' => $addr['address'] ?? ($customer?->address ?? 'Jeddah'),
-                'address_2' => $addr['address_2'] ?? null,
-                'city' => $addr['city'] ?? 'Jeddah',
-                'district' => $addr['district'] ?? null,
-                'zip_code' => $addr['zip_code'] ?? null,
-                'country' => 'Saudi Arabia',
+                'delivery_message' => $subscription->gift_message ?? $initialOrder?->delivery_message,
+                'sender_name' => $senderName,
+                'recipient_name' => $recipientName,
+                'recipient_phone' => $recipientPhone,
+                'address' => $address,
+                'address_2' => $address2,
+                'city' => $city,
+                'district' => $district,
+                'state' => $state,
+                'zip_code' => $zipCode,
+                'country' => $country,
+                'location_link' => $locationLink,
                 'shipping_method' => $shippingMethodName,
                 'notes' => "Recurring Subscription Delivery #{$delivery->delivery_number} of {$subscription->subscription_number}.",
                 'subscription_id' => $subscription->id,
                 'subscription_delivery_id' => $delivery->id,
                 'is_recurring_order' => true,
                 'ordered_at' => now(),
+                'meta_data' => [
+                    'currency' => 'SAR',
+                    'exchange_rate' => $exchangeRate,
+                    'sar_total' => $sarAmount,
+                    'currency_total' => $sarAmount,
+                    'usd_total' => $currencyAmount,
+                    'has_subscription' => true,
+                    'subscription_ids' => [$subscription->id],
+                    'paypal_charge_usd' => $currencyAmount,
+                ],
             ]);
 
             $order->update([
@@ -403,7 +475,7 @@ class SubscriptionService
                 'tax' => $subscription->tax_amount,
                 'subtotal' => round($subscription->discounted_price * $subscription->quantity, 2),
                 'total' => $delivery->total_amount,
-                'payment_method' => $subscription->payment_gateway ?? 'hyperpay',
+                'payment_method' => $effectiveGateway,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -420,7 +492,72 @@ class SubscriptionService
                 ['order_id' => $order->id, 'delivery_id' => $delivery->id]
             );
 
-            return $order;
+            // 💳 5. Automatic Recurring Payment Charge via Payment Token
+            if ($autoCharge && !empty($subscription->payment_token)) {
+                $token = $subscription->payment_token;
+                Log::info("[SubscriptionService] Executing auto recurring payment for Order #{$order->order_number} via [{$effectiveGateway}] using token [{$token}]");
+
+                $options = [];
+                if (!empty($subscription->payment_token_details['brand'])) {
+                    $options['payment_brand'] = $subscription->payment_token_details['brand'];
+                }
+
+                $paymentResult = \App\Services\Payments\PaymentManager::chargeRecurringToken($order, $token, $effectiveGateway, $options);
+
+                if (!empty($paymentResult['success'])) {
+                    $txId = $paymentResult['transaction_id'] ?? ('TXN_REC_' . time());
+                    \App\Services\Payments\PaymentManager::markOrderAsPaid($order, $txId, $effectiveGateway, $paymentResult, 'RECURRING');
+
+                    $delivery->update([
+                        'delivery_status' => 'processing',
+                        'payment_status' => 'paid',
+                        'payment_reference' => $txId,
+                    ]);
+
+                    $subscription->update([
+                        'consecutive_failed_payments' => 0,
+                        'last_payment_failed_at' => null,
+                        'last_payment_error' => null,
+                    ]);
+
+                    $subscription->logActivity(
+                        'payment_success',
+                        "Recurring payment of SAR {$order->total_amount} charged successfully for delivery #{$delivery->delivery_number} (TXN: {$txId}).",
+                        ['order_id' => $order->id, 'transaction_id' => $txId, 'gateway' => $effectiveGateway]
+                    );
+                } else {
+                    $errMsg = $paymentResult['message'] ?? 'Payment transaction declined.';
+                    $order->update([
+                        'payment_status' => 'payment_pending',
+                        'failed_order_reason' => $errMsg,
+                    ]);
+
+                    $delivery->update([
+                        'payment_status' => 'failed',
+                        'notes' => $errMsg,
+                    ]);
+
+                    $failedAttempts = $subscription->consecutive_failed_payments + 1;
+                    $subUpdates = [
+                        'consecutive_failed_payments' => $failedAttempts,
+                        'last_payment_failed_at' => now(),
+                        'last_payment_error' => $errMsg,
+                    ];
+                    if ($failedAttempts >= 3) {
+                        $subUpdates['status'] = 'paused';
+                        $subUpdates['pause_start_date'] = now()->toDateString();
+                    }
+                    $subscription->update($subUpdates);
+
+                    $subscription->logActivity(
+                        'payment_failed',
+                        "Recurring payment charge failed for delivery #{$delivery->delivery_number}: {$errMsg} (Attempt {$failedAttempts}/3)",
+                        ['order_id' => $order->id, 'error' => $errMsg, 'gateway' => $effectiveGateway]
+                    );
+                }
+            }
+
+            return $order->fresh();
         });
     }
 

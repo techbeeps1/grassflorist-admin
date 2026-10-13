@@ -345,7 +345,12 @@ class CheckoutController extends Controller
             }
         } else 
             {
-            $totalAmount = $totalAmount + $request->delivery_amount; 
+            $paymentMethod = strtolower(trim((string)($request->payment_method ?: 'mada')));
+            $isCod = in_array($paymentMethod, ['cod', 'cash_on_delivery']);
+            $isPaypal = ($paymentMethod === 'paypal');
+
+            $codAmount = $isCod ? (float)($request->delivery_amount ?: 0) : 0.00;
+            $totalAmount = $totalAmount + $codAmount; 
 
             $senderName = $request->sender_name ?: trim(($request->first_name ?? '') . ' ' . ($request->last_name ?? ''));
             $recipientName = $request->recipient_name ?: trim(($request->recipient_first_name ?? '') . ' ' . ($request->recipient_last_name ?? '')) ?: $senderName;
@@ -355,10 +360,6 @@ class CheckoutController extends Controller
             $deliveryTime = $request->delivery_time ?: $request->delivery_slot;
             $deliveryMessage = $request->card_message ?: $request->delivery_message;
             $songLink = $request->song_link;
-
-            $paymentMethod = strtolower(trim((string)($request->payment_method ?: 'mada')));
-            $isCod = in_array($paymentMethod, ['cod', 'cash_on_delivery']);
-            $isPaypal = ($paymentMethod === 'paypal');
 
             $sarToUsdRate = (float)($globalSetting->sar_to_usd_rate ?: 0.2667);
             $exchangeRate = (float)($request->exchange_rate ?: $sarToUsdRate);
@@ -461,7 +462,7 @@ class CheckoutController extends Controller
                 'state' => 'Makkah',
                 'country' => 'Saudi Arabia',
                 'order_language' => $orderLanguage,
-                'delivery_amount' => $request->delivery_amount ?: 0,
+                'delivery_amount' => $codAmount,
             ];
 
             if ($existingOrder) {
@@ -560,10 +561,14 @@ class CheckoutController extends Controller
                                 'address_2' => $order->address_2,
                                 'city' => $order->city ?: 'Jeddah',
                                 'district' => $order->district,
+                                'state' => $order->state,
+                                'country' => $order->country ?: 'Saudi Arabia',
                                 'zip_code' => $order->zip_code,
+                                'location_link' => $order->location_link,
                                 'card_message' => $deliveryMessage,
                                 'payment_gateway' => $paymentMethod,
                                 'status' => $isCod ? 'active' : 'pending_payment',
+                                'initial_order_id' => $order->id,
                             ]);
 
                             $firstDelivery = $subscription->deliveries()->orderBy('delivery_number', 'asc')->first() ?? $subscription->deliveries()->first();
@@ -690,7 +695,7 @@ class CheckoutController extends Controller
                 $vendorEmail = $vendor?->user?->email;
 
                 if ($vendor && $vendorEmail) {
-                    Mail::to($vendorEmail)->send(new VendorOrderNotification($order, $vendor, $vendorItems));
+                    Mail::to($vendorEmail)->queue(new VendorOrderNotification($order, $vendor, $vendorItems));
                 }
             }
 

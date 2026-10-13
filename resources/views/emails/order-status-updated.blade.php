@@ -310,10 +310,10 @@
                     <td class="totals-label" style="text-align: right; color: #64748b; padding: 4px 8px; font-size: 13px;">Shipping:</td>
                     <td class="totals-value" style="text-align: right; font-weight: 600; color: #1e293b; padding: 4px 8px; font-size: 13px;">₹{{ number_format($order->shipping_amount ?? 0, 2) }}</td>
                 </tr>
-                @if(strtolower($order->payment_method ?? '') === 'cod' || ($order->delivery_amount ?? 0) > 0)
+                @if(strtolower($order->payment_method ?? '') === 'cod' && ($order->delivery_amount ?? 0) > 0)
                 <tr>
                     <td class="totals-label" style="text-align: right; color: #64748b; padding: 4px 8px; font-size: 13px;">COD Charges:</td>
-                    <td class="totals-value" style="text-align: right; font-weight: 600; color: #1e293b; padding: 4px 8px; font-size: 13px;">₹{{ number_format($order->delivery_amount ?? 0, 2) }}</td>
+                    <td class="totals-value" style="text-align: right; font-weight: 600; color: #1e293b; padding: 4px 8px; font-size: 13px;">SAR {{ number_format($order->delivery_amount ?? 0, 2) }}</td>
                 </tr>
                 @endif
                 <tr class="grand-total" style="border-top: 2px solid #e2e8f0;">

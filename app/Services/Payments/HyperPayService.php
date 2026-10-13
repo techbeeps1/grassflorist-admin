@@ -284,16 +284,28 @@ class HyperPayService implements PaymentGatewayInterface
             ];
         }
 
+        $frontendBase = $this->getFrontendUrl($options);
+        $locale = $options['locale'] ?? app()->getLocale();
+        $prefix = $locale === 'ar' ? '' : '/en';
+        $shopperResultUrl = $options['shopperResultUrl'] 
+            ?? $options['return_url'] 
+            ?? "{$frontendBase}{$prefix}/checkout?order_number={$order->order_number}&order_id={$order->id}&gateway=hyperpay&payment_success=1";
+
         $params = [
             'entityId' => $entityId,
             'amount' => number_format((float)($order->sar_amount ?: $order->total_amount), 2, '.', ''),
             'currency' => 'SAR',
             'paymentType' => 'DB',
             'merchantTransactionId' => (string)($order->order_number ?? $order->id),
+            'shopperResultUrl' => $shopperResultUrl,
             'standingInstruction.mode' => 'REPEATED',
             'standingInstruction.type' => 'RECURRING',
             'standingInstruction.source' => 'MIT',
         ];
+
+        if (!empty($order->email)) {
+            $params['customer.email'] = $order->email;
+        }
 
         try {
             $url = "{$this->baseUrl}/v1/registrations/{$registrationId}/payments";
@@ -301,7 +313,14 @@ class HyperPayService implements PaymentGatewayInterface
             $data = $response->json();
 
             $resultCode = $data['result']['code'] ?? '';
-            $isSuccessful = (bool)preg_match('/^(000\.000\.|000\.100\.1|000\.[36]|000\.400\.[0-2])/', $resultCode);
+            $acquirerResponse = $data['resultDetails']['AcquirerResponse'] ?? '';
+            $extendedDesc = $data['resultDetails']['ExtendedDescription'] ?? '';
+
+            $isSuccessful = (bool)preg_match('/^(000\.000\.|000\.100\.1|000\.[36]|000\.400\.[0-2])/', $resultCode)
+                || ($resultCode === '000.200.000' && ($acquirerResponse === '00' || stripos($extendedDesc, 'Successfully processed') !== false));
+
+            $realTxId = $data['id'] ?? null;
+            $errMsg = $data['result']['description'] ?? 'HyperPay recurring charge declined.';
 
             PaymentLog::create([
                 'order_id' => $order->id,
@@ -330,5 +349,25 @@ class HyperPayService implements PaymentGatewayInterface
                 'message' => 'HyperPay recurring charge exception: ' . $e->getMessage(),
             ];
         }
+    }
+
+    protected function getFrontendUrl(array $options = []): string
+    {
+        if (!empty($options['frontend_url'])) {
+            return rtrim($options['frontend_url'], '/');
+        }
+        $origin = request()->headers->get('origin') ?? request()->headers->get('referer');
+        if ($origin) {
+            $parsed = parse_url($origin);
+            if (!empty($parsed['scheme']) && !empty($parsed['host'])) {
+                $port = !empty($parsed['port']) ? ":{$parsed['port']}" : '';
+                return "{$parsed['scheme']}://{$parsed['host']}{$port}";
+            }
+        }
+        $envUrl = env('FRONTEND_URL', 'http://localhost:3000');
+        if (app()->environment('local') && !str_contains($envUrl, 'localhost')) {
+            return 'http://localhost:3000';
+        }
+        return rtrim($envUrl, '/');
     }
 }

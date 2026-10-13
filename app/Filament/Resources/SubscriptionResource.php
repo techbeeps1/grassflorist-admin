@@ -317,12 +317,21 @@ class SubscriptionResource extends Resource
                         }
 
                         try {
-                            $order = $service->generateOrderForDelivery($delivery);
-                            Notification::make()
-                                ->title('Delivery Order Generated')
-                                ->body("Order #{$order->order_number} successfully created for delivery #{$delivery->delivery_number}.")
-                                ->success()
-                                ->send();
+                            $order = $service->generateOrderForDelivery($delivery, true);
+                            if ($order->payment_status === 'paid') {
+                                Notification::make()
+                                    ->title('Delivery Order Generated & Paid')
+                                    ->body("Order #{$order->order_number} successfully created and recurring payment auto-charged via {$order->payment_method}.")
+                                    ->success()
+                                    ->send();
+                            } else {
+                                $reason = $order->failed_order_reason ? "({$order->failed_order_reason})" : "(Payment Pending)";
+                                Notification::make()
+                                    ->title('Delivery Order Generated')
+                                    ->body("Order #{$order->order_number} created for delivery #{$delivery->delivery_number}. {$reason}")
+                                    ->warning()
+                                    ->send();
+                            }
                         } catch (\Throwable $e) {
                             Notification::make()
                                 ->title('Order Generation Failed')

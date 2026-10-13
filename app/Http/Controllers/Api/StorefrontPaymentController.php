@@ -153,7 +153,8 @@ class StorefrontPaymentController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Order ID is required.'], 400);
         }
 
-        $order = Order::where('id', $orderId)
+        $order = Order::with('items')
+            ->where('id', $orderId)
             ->orWhere('order_number', $orderId)
             ->first();
 
@@ -168,27 +169,24 @@ class StorefrontPaymentController extends Controller
             ?? $order->payment_method
             ?? 'hyperpay';
 
-        // ⚡ If order is ALREADY paid (via webhook or earlier call), ensure subscriptions are activated and return immediately
+        // ⚡ If order is ALREADY paid (via webhook or earlier call), return immediately
         if ($order->payment_status === 'paid') {
-            PaymentManager::activateOrderSubscriptions($order, $order->payment_method);
-            PaymentManager::clearOrderCart($order);
-            $freshOrder = $order->fresh(['items']);
             return response()->json([
                 'status' => 'success',
                 'order_id' => $order->id,
                 'order_number' => $order->order_number,
                 'payment_status' => 'paid',
-                'order_status' => $freshOrder->status,
-                'total_amount' => (float)$freshOrder->total_amount,
-                'sar_amount' => (float)($freshOrder->sar_amount ?: $freshOrder->total_amount),
-                'currency' => $freshOrder->currency,
-                'currency_amount' => (float)($freshOrder->currency_amount ?: $freshOrder->total_amount),
+                'order_status' => $order->status,
+                'total_amount' => (float)$order->total_amount,
+                'sar_amount' => (float)($order->sar_amount ?: $order->total_amount),
+                'currency' => $order->currency,
+                'currency_amount' => (float)($order->currency_amount ?: $order->total_amount),
                 'verification' => [
                     'is_paid' => true,
                     'status' => 'completed',
                     'transaction_id' => $order->transaction_id ?? $order->razorpay_payment_id ?? (string)$order->id,
                 ],
-                'order' => $freshOrder,
+                'order' => $order,
             ]);
         }
 
@@ -208,7 +206,23 @@ class StorefrontPaymentController extends Controller
             ?? ($json['resourcePath'] ?? null)
             ?? ($json['resource_path'] ?? null);
 
-        $refId = $request->reference_id ?? $request->token ?? $request->payment_id ?? $order->razorpay_order_id ?? $order->razorpay_payment_id ?? $order->order_number ?? (string)$order->id;
+        $refId = $request->input('reference_id')
+            ?? $request->input('subscription_id')
+            ?? $request->input('token')
+            ?? $request->input('payment_id')
+            ?? ($json['reference_id'] ?? null)
+            ?? ($json['subscription_id'] ?? null)
+            ?? ($json['token'] ?? null)
+            ?? ($json['payment_id'] ?? null)
+            ?? $order->razorpay_order_id
+            ?? $order->razorpay_payment_id
+            ?? $order->order_number
+            ?? (string)$order->id;
+
+        // For PayPal, if refId is just internal order number/ID but razorpay_order_id holds PayPal token/ID
+        if (strtolower($gateway) === 'paypal' && (str_starts_with((string)$refId, 'ORD-') || is_numeric($refId)) && !empty($order->razorpay_order_id)) {
+            $refId = $order->razorpay_order_id;
+        }
 
         if ($service instanceof \App\Services\Payments\HyperPayService) {
             $res = $service->verifyPayment($refId, $brand, $resourcePath);
@@ -220,46 +234,9 @@ class StorefrontPaymentController extends Controller
             PaymentManager::markOrderAsPaid($order, $res['transaction_id'] ?? $refId, $gateway, $res['raw'] ?? [], 'FRONTEND_VERIFY');
             $order->update(['payment_method' => strtolower($gateway)]);
 
-            // ⚡ Recurring Subscription Token Activation (supports single or multiple subscriptions in order)
-            $subIds = [];
-            if (!empty($order->subscription_id)) {
-                $subIds[] = $order->subscription_id;
-            }
-            if (!empty($order->meta_data['subscription_ids']) && is_array($order->meta_data['subscription_ids'])) {
-                $subIds = array_unique(array_merge($subIds, $order->meta_data['subscription_ids']));
-            }
-
-            foreach ($subIds as $sId) {
-                $sub = \App\Models\Subscription::find($sId);
-                if ($sub) {
-                    $raw = $res['raw'] ?? [];
-                    $regId = $raw['registrationId'] ?? $raw['id'] ?? null;
-                    $cardDetails = [
-                        'brand' => $raw['paymentBrand'] ?? $brand,
-                        'last4' => $raw['card']['last4Digits'] ?? null,
-                        'expiry_month' => $raw['card']['expiryMonth'] ?? null,
-                        'expiry_year' => $raw['card']['expiryYear'] ?? null,
-                    ];
-
-                    $subUpdates = [
-                        'status' => 'active',
-                        'consecutive_failed_payments' => 0,
-                    ];
-                    if (!empty($regId)) {
-                        $subUpdates['payment_token'] = $regId;
-                        $subUpdates['payment_token_details'] = $cardDetails;
-                    }
-                    $sub->update($subUpdates);
-                    $sub->logActivity('initial_payment_verified', "Initial payment verified for order #{$order->order_number}. Subscription activated.", [
-                        'order_id' => $order->id,
-                        'transaction_id' => $res['transaction_id'] ?? $refId,
-                    ]);
-                }
-            }
-
             if (!empty($order->subscription_delivery_id)) {
                 $del = \App\Models\SubscriptionDelivery::find($order->subscription_delivery_id);
-                if ($del) {
+                if ($del && $del->payment_status !== 'paid') {
                     $del->update([
                         'delivery_status' => 'processing',
                         'payment_status' => 'paid',

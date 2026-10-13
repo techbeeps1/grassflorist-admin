@@ -101,23 +101,15 @@ class OrderObserver
             };
 
             if ($eventKey) {
-                $orderId = $order->id;
-                app()->terminating(function () use ($orderId, $eventKey) {
-                    try {
-                        $targetOrder = Order::find($orderId);
-                        if ($targetOrder) {
-                            /** @var NotificationService $notificationService */
-                            $notificationService = app(NotificationService::class);
-                            $notificationService->sendOrderNotification($targetOrder, $eventKey);
-                        }
-                    } catch (\Throwable $e) {
-                        Log::error("OrderObserver terminating notification failed for Order #{$orderId} ({$eventKey}): " . $e->getMessage());
-                    }
-                });
+                try {
+                    \App\Jobs\SendOrderNotificationJob::dispatch($order->id, $eventKey);
+                } catch (\Throwable $e) {
+                    Log::error("OrderObserver failed to dispatch notification job for Order #{$order->id} ({$eventKey}): " . $e->getMessage());
+                }
             }
         }
 
-        // 3. Trigger Odoo ERP Auto-sync (Strictly only when order is paid & not already synced, deferred to terminate phase)
+        // 3. Trigger Odoo ERP Auto-sync in background queue (Strictly only when order is paid & not already synced)
         $isPaid = in_array(strtolower((string)$order->payment_status), ['paid', 'completed']);
         $becamePaid = $isPaid && (
             $order->isDirty('payment_status') ||
@@ -125,18 +117,11 @@ class OrderObserver
         );
 
         if ($becamePaid && $order->odoo_sync_status !== 'synced') {
-            $orderId = $order->id;
-            app()->terminating(function () use ($orderId) {
-                try {
-                    $targetOrder = Order::find($orderId);
-                    if ($targetOrder && $targetOrder->odoo_sync_status !== 'synced') {
-                        $odooService = app(\App\Services\Odoo\OdooService::class);
-                        $odooService->syncOrder($targetOrder, 'system_auto');
-                    }
-                } catch (\Throwable $e) {
-                    Log::error("[OrderObserver] Terminating Odoo auto-sync error for Order #{$orderId}: " . $e->getMessage());
-                }
-            });
+            try {
+                \App\Jobs\SyncOdooOrderJob::dispatch($order->id);
+            } catch (\Throwable $e) {
+                Log::error("[OrderObserver] Failed to dispatch Odoo sync job for Order #{$order->id}: " . $e->getMessage());
+            }
         }
     }
 }

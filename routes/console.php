@@ -20,9 +20,15 @@ Schedule::command('payments:reconcile-pending')
     ->withoutOverlapping()
     ->runInBackground();
 
-// Daily recurring subscription delivery processing (06:00 AM Saudi Time)
-Schedule::command('subscriptions:process-deliveries')
+// Daily recurring subscription delivery processing (06:00 AM Saudi Time - 1 day before delivery)
+Schedule::command('subscriptions:process-deliveries --lead-days=1')
     ->dailyAt('06:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Process queued jobs (Email & SMS) continuously in background
+Schedule::command('queue:work --stop-when-empty --tries=3')
+    ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
 
