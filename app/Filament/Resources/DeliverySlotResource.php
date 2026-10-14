@@ -14,8 +14,8 @@ class DeliverySlotResource extends Resource
 {
     protected static ?string $model = DeliverySlot::class;
     protected static ?string $navigationIcon = 'heroicon-o-clock';
-    protected static ?string $navigationGroup = 'Shipping & Delivery';
-    protected static ?int $navigationSort = 2;
+    protected static ?string $navigationGroup = 'Settings';
+    protected static ?int $navigationSort = 4;
     protected static ?string $navigationLabel = 'Delivery Slots (Friday / Daily)';
     protected static ?string $modelLabel = 'Delivery Slot';
 

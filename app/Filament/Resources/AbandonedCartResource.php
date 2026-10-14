@@ -567,29 +567,7 @@ class AbandonedCartResource extends Resource
                         ExcelExport::make()
                             ->withFilename(fn () => 'abandoned-carts-' . date('Y-m-d'))
                             ->withWriterType(\Maatwebsite\Excel\Excel::XLSX)
-                            ->withColumns([
-                                ExcelColumn::make('id')->heading('Cart ID'),
-                                ExcelColumn::make('customer_name')->heading('Customer Name')
-                                    ->formatStateUsing(fn ($record) => $record->getEffectiveCustomerName()),
-                                ExcelColumn::make('customer_phone')->heading('Mobile Number')
-                                    ->formatStateUsing(fn ($record) => $record->getEffectiveCustomerPhone() ?? 'N/A'),
-                                ExcelColumn::make('customer_email')->heading('Email Address')
-                                    ->formatStateUsing(fn ($record) => $record->getEffectiveCustomerEmail() ?? 'N/A'),
-                                ExcelColumn::make('items_summary')->heading('Items in Cart')
-                                    ->formatStateUsing(fn ($record) => $record->items->map(fn ($i) => (format_translatable($i->product?->name, 'en') ?: 'Product') . ' (Qty: ' . $i->quantity . ')')->implode(', ')),
-                                ExcelColumn::make('total_items')->heading('Total Qty')
-                                    ->formatStateUsing(fn ($record) => $record->getItemsCount()),
-                                ExcelColumn::make('total_value')->heading('Cart Total (SAR)')
-                                    ->formatStateUsing(fn ($record) => $record->calculateTotal()),
-                                ExcelColumn::make('status')->heading('Status')
-                                    ->formatStateUsing(fn ($record) => ucfirst($record->status)),
-                                ExcelColumn::make('abandoned_at')->heading('Abandoned Date')
-                                    ->formatStateUsing(fn ($record) => $record->abandoned_at ? $record->abandoned_at->format('Y-m-d H:i') : ($record->updated_at ? $record->updated_at->format('Y-m-d H:i') : '')),
-                                ExcelColumn::make('recovery_url')->heading('Direct Recovery Link')
-                                    ->formatStateUsing(fn ($record) => $record->getRecoveryUrl()),
-                                ExcelColumn::make('reminder_sent_count')->heading('Reminders Sent'),
-                                ExcelColumn::make('admin_notes')->heading('Admin Notes'),
-                            ]),
+                            ->withColumns(static::getExportColumns()),
                     ]),
             ])
             ->bulkActions([
@@ -599,29 +577,7 @@ class AbandonedCartResource extends Resource
                         ExcelExport::make()
                             ->withFilename(fn () => 'abandoned-carts-selected-' . date('Y-m-d'))
                             ->withWriterType(\Maatwebsite\Excel\Excel::XLSX)
-                            ->withColumns([
-                                ExcelColumn::make('id')->heading('Cart ID'),
-                                ExcelColumn::make('customer_name')->heading('Customer Name')
-                                    ->formatStateUsing(fn ($record) => $record->getEffectiveCustomerName()),
-                                ExcelColumn::make('customer_phone')->heading('Mobile Number')
-                                    ->formatStateUsing(fn ($record) => $record->getEffectiveCustomerPhone() ?? 'N/A'),
-                                ExcelColumn::make('customer_email')->heading('Email Address')
-                                    ->formatStateUsing(fn ($record) => $record->getEffectiveCustomerEmail() ?? 'N/A'),
-                                ExcelColumn::make('items_summary')->heading('Items in Cart')
-                                    ->formatStateUsing(fn ($record) => $record->items->map(fn ($i) => (format_translatable($i->product?->name, 'en') ?: 'Product') . ' (Qty: ' . $i->quantity . ')')->implode(', ')),
-                                ExcelColumn::make('total_items')->heading('Total Qty')
-                                    ->formatStateUsing(fn ($record) => $record->getItemsCount()),
-                                ExcelColumn::make('total_value')->heading('Cart Total (SAR)')
-                                    ->formatStateUsing(fn ($record) => $record->calculateTotal()),
-                                ExcelColumn::make('status')->heading('Status')
-                                    ->formatStateUsing(fn ($record) => ucfirst($record->status)),
-                                ExcelColumn::make('abandoned_at')->heading('Abandoned Date')
-                                    ->formatStateUsing(fn ($record) => $record->abandoned_at ? $record->abandoned_at->format('Y-m-d H:i') : ($record->updated_at ? $record->updated_at->format('Y-m-d H:i') : '')),
-                                ExcelColumn::make('recovery_url')->heading('Direct Recovery Link')
-                                    ->formatStateUsing(fn ($record) => $record->getRecoveryUrl()),
-                                ExcelColumn::make('reminder_sent_count')->heading('Reminders Sent'),
-                                ExcelColumn::make('admin_notes')->heading('Admin Notes'),
-                            ]),
+                            ->withColumns(static::getExportColumns()),
                     ]),
 
                 Tables\Actions\BulkAction::make('markExpiredBulk')
@@ -629,6 +585,66 @@ class AbandonedCartResource extends Resource
                     ->requiresConfirmation()
                     ->action(fn ($records) => $records->each->update(['status' => 'expired'])),
             ]);
+    }
+
+    public static function getExportColumns(): array
+    {
+        return [
+            ExcelColumn::make('id')->heading('Cart ID')
+                ->getStateUsing(fn ($record) => $record->id),
+
+            ExcelColumn::make('customer_name')->heading('Customer Name')
+                ->getStateUsing(fn ($record) => $record->getEffectiveCustomerName()),
+
+            ExcelColumn::make('customer_phone')->heading('Mobile Number')
+                ->getStateUsing(fn ($record) => $record->getEffectiveCustomerPhone() ?? 'N/A'),
+
+            ExcelColumn::make('customer_email')->heading('Email Address')
+                ->getStateUsing(fn ($record) => $record->getEffectiveCustomerEmail() ?? 'N/A'),
+
+            ExcelColumn::make('items_summary')->heading('Items in Cart')
+                ->getStateUsing(function ($record) {
+                    $record->loadMissing('items.product');
+                    if ($record->items->isEmpty()) {
+                        return 'No items';
+                    }
+                    return $record->items->map(function ($item) {
+                        $name = format_translatable($item->product?->name, 'en') ?: ($item->product?->name ?? 'Product');
+                        if (is_array($name)) {
+                            $name = $name['en'] ?? $name['ar'] ?? reset($name) ?? 'Product';
+                        }
+                        $qty = (int) $item->quantity;
+                        return "{$name} (Qty: {$qty})";
+                    })->implode(', ');
+                }),
+
+            ExcelColumn::make('total_items')->heading('Total Qty')
+                ->getStateUsing(function ($record) {
+                    $record->loadMissing('items');
+                    return (int) $record->getItemsCount();
+                }),
+
+            ExcelColumn::make('total_value')->heading('Cart Total (SAR)')
+                ->getStateUsing(function ($record) {
+                    $record->loadMissing('items.product');
+                    return number_format((float) $record->calculateTotal(), 2, '.', '');
+                }),
+
+            ExcelColumn::make('status')->heading('Status')
+                ->getStateUsing(fn ($record) => ucfirst((string) $record->status)),
+
+            ExcelColumn::make('abandoned_at')->heading('Abandoned Date')
+                ->getStateUsing(fn ($record) => $record->abandoned_at ? $record->abandoned_at->format('Y-m-d H:i') : ($record->updated_at ? $record->updated_at->format('Y-m-d H:i') : 'N/A')),
+
+            ExcelColumn::make('recovery_url')->heading('Direct Recovery Link')
+                ->getStateUsing(fn ($record) => $record->getRecoveryUrl()),
+
+            ExcelColumn::make('reminder_sent_count')->heading('Reminders Sent')
+                ->getStateUsing(fn ($record) => (int) ($record->reminder_sent_count ?? 0)),
+
+            ExcelColumn::make('admin_notes')->heading('Admin Notes')
+                ->getStateUsing(fn ($record) => (string) ($record->admin_notes ?? '')),
+        ];
     }
 
     public static function getWidgets(): array

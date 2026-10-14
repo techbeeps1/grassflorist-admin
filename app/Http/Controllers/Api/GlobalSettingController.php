@@ -49,6 +49,15 @@ class GlobalSettingController extends Controller
                     'default_delivery_fee' => (float)(\App\Models\ShippingMethod::where('is_active', true)->value('price') ?? 30.00),
                     'free_shipping_threshold' => 250.00,
                 ],
+                'cart_upsell' => [
+                    'enabled' => (bool) ($setting->cart_upsell_enabled ?? true),
+                    'title' => [
+                        'en' => $setting->cart_upsell_title_en ?: 'Make it perfect',
+                        'ar' => $setting->cart_upsell_title_ar ?: 'اجعلها مثالية',
+                    ],
+                    'category_ids' => array_values(array_map('intval', (array) ($setting->cart_upsell_category_ids ?? [30, 29, 39, 43, 46]))),
+                    'limit_per_category' => (int) ($setting->cart_upsell_limit_per_category ?? 10),
+                ],
                 'branding' => [
                     'site_name' => [
                         'en' => $setting->site_name_en ?: $setting->site_name ?: 'Grass Florist',

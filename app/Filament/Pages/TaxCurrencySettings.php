@@ -28,6 +28,7 @@ class TaxCurrencySettings extends Page implements HasForms
     protected static ?string $title = 'Tax & Currency Settings';
     protected static ?string $navigationGroup = 'Settings';
     protected static ?int $navigationSort = 2;
+    protected static bool $shouldRegisterNavigation = false;
 
     protected static string $view = 'filament.pages.settings-page';
 
@@ -40,14 +41,7 @@ class TaxCurrencySettings extends Page implements HasForms
 
     public function mount(): void
     {
-        $settings = GlobalSetting::current();
-
-        $this->form->fill([
-            'vat_percentage' => $settings->vat_percentage ?? 15.00,
-            'vat_registration_number' => $settings->vat_registration_number,
-            'is_vat_included' => (bool)$settings->is_vat_included,
-            'sar_to_usd_rate' => $settings->sar_to_usd_rate ?? 0.2667,
-        ]);
+        redirect()->to(StoreSettings::getUrl());
     }
 
     public function form(Form $form): Form

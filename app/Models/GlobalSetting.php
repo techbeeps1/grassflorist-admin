@@ -21,6 +21,9 @@ class GlobalSetting extends Model
         'msegat_sms_enabled' => 'boolean',
         'odoo_enabled' => 'boolean',
         'odoo_auto_sync_on_paid' => 'boolean',
+        'cart_upsell_enabled' => 'boolean',
+        'cart_upsell_category_ids' => 'array',
+        'cart_upsell_limit_per_category' => 'integer',
     ];
 
     protected $appends = [

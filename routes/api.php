@@ -65,6 +65,7 @@ $registerStoreRoutes = function () {
         Route::post('/sync-customer', [CartController::class, 'syncCustomer']);
         Route::post('/coupon/{coupon_code}', [CheckoutController::class, 'showCouponCode']);
         Route::get('/coupons', [CheckoutController::class, 'getAvailableCoupons']);
+        Route::get('/make-it-perfect', [\App\Http\Controllers\Api\CartUpsellController::class, 'index']);
     });
 
     Route::get('orders/{order_number}', [OrderApiController::class, 'show']);

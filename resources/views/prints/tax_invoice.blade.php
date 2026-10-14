@@ -2,7 +2,7 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
     <title>Invoice - #{{ $order->order_number ?? $order->id }} - Grass Florist</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -57,19 +57,27 @@
             $shippingAddressFormatted = $order->city ?: 'Jeddah';
         }
 
-        // Arabic Payment Method mapping
+        // Friendly Customer Payment Method mapping (No technical gateway names like hyperpay)
         $methodRaw = strtolower((string)($order->payment_method ?? ''));
-        $paymentMethodAr = match(true) {
-            str_contains($methodRaw, 'apple') => 'ابل باي',
-            str_contains($methodRaw, 'mada') => 'مدى',
-            str_contains($methodRaw, 'stc') => 'اس تي سي باي',
-            str_contains($methodRaw, 'tabby') => 'تابي',
-            str_contains($methodRaw, 'tamara') => 'تمارا',
-            str_contains($methodRaw, 'cod') => 'الدفع عند الاستلام',
-            str_contains($methodRaw, 'paypal') => 'باي بال (PayPal)',
-            str_contains($methodRaw, 'card') || str_contains($methodRaw, 'visa') || str_contains($methodRaw, 'master') => 'بطاقة ائتمانية',
-            default => !empty($order->payment_method) ? $order->payment_method : 'ابل باي',
+        $meta = is_array($order->meta_data) ? $order->meta_data : (json_decode($order->meta_data, true) ?: []);
+        $gatewayMeta = strtolower((string)($meta['payment_gateway'] ?? $meta['gateway'] ?? $meta['payment_method'] ?? $meta['brand'] ?? ''));
+        $combo = $methodRaw . ' ' . $gatewayMeta;
+
+        $paymentMethodDisplay = match(true) {
+            str_contains($combo, 'apple') => 'أبل باي (Apple Pay)',
+            str_contains($combo, 'mada') => 'بطاقة مدى (Mada Card)',
+            str_contains($combo, 'stc') => 'اس تي سي باي (STC Pay)',
+            str_contains($combo, 'tabby') => 'تابي (Tabby)',
+            str_contains($combo, 'tamara') => 'تمارا (Tamara)',
+            str_contains($combo, 'cod') || str_contains($combo, 'cash') => 'الدفع عند الاستلام (Cash on Delivery)',
+            str_contains($combo, 'paypal') || str_contains($combo, 'ppcp') => 'بايبال (PayPal)',
+            str_contains($combo, 'visa') => 'بطاقة فيزا (Visa Card)',
+            str_contains($combo, 'master') => 'ماستركارد (MasterCard)',
+            str_contains($combo, 'hyperpay') || str_contains($combo, 'card') => 'بطاقة ائتمان (Card)',
+            !empty($order->payment_method) && !str_contains($methodRaw, 'gateway') && !str_contains($methodRaw, 'hyperpay') => ucwords(str_replace(['_', '-'], ' ', $order->payment_method)),
+            default => 'بطاقة ائتمان (Card)',
         };
+        $paymentMethodAr = $paymentMethodDisplay;
 
         // ZATCA Phase-1 Compliant QR Code
         $sellerName = 'مؤسسة غراس السعودية';
@@ -99,14 +107,17 @@
             padding: 0;
         }
 
-        body {
+        html, body {
             font-family: 'Cairo', 'Tajawal', sans-serif;
             background-color: #f3f4f6;
             color: #000000;
             margin: 0;
-            padding: 0 0 40px 0;
+            padding: 0;
             font-size: 12px;
             line-height: 1.4;
+            width: 100%;
+            max-width: 100vw;
+            overflow-x: hidden;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
         }
@@ -123,6 +134,7 @@
             display: flex;
             justify-content: center;
             gap: 12px;
+            width: 100%;
         }
 
         .btn {
@@ -144,14 +156,36 @@
         .btn-secondary { background: #4b5563; }
         .btn-secondary:hover { background: #374151; }
 
-        /* Invoice Paper Container (A4 Proportions) */
+        /* Invoice Outer Viewport Container (Zero horizontal overflow) */
+        .invoice-viewport-container {
+            width: 100%;
+            max-width: 100vw;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            overflow-x: hidden;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* Responsive scale box that shrinks to exact screen width on mobile */
+        .invoice-scale-box {
+            width: 820px;
+            margin: 20px auto 40px auto;
+            position: relative;
+        }
+
+        /* Invoice Paper Container (A4 Proportions: exactly 820px base desktop width) */
         .invoice-wrapper {
+            width: 820px;
+            min-width: 820px;
             max-width: 820px;
-            margin: 25px auto 20px auto;
             background: #ffffff;
             padding: 30px 40px;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
             border-radius: 4px;
+            box-sizing: border-box;
+            transform-origin: top left;
         }
 
         /* Header Section */
@@ -363,6 +397,21 @@
                 display: none !important;
             }
 
+            .invoice-viewport-container {
+                display: block !important;
+                padding: 0 !important;
+                height: auto !important;
+                overflow: visible !important;
+            }
+
+            .invoice-scale-box {
+                width: 100% !important;
+                height: auto !important;
+                overflow: visible !important;
+                margin: 0 !important;
+                position: static !important;
+            }
+
             .invoice-wrapper {
                 box-shadow: none !important;
                 border-radius: 0 !important;
@@ -370,8 +419,11 @@
                 margin: 0 auto !important;
                 padding: 10mm 12mm 12mm 12mm !important;
                 max-width: 100% !important;
+                min-width: 0 !important;
                 width: 100% !important;
                 box-sizing: border-box !important;
+                position: static !important;
+                transform: none !important;
             }
 
             .products-table thead th {
@@ -395,8 +447,10 @@
         </button>
     </div>
 
-    <!-- Printable Invoice Page -->
-    <div class="invoice-wrapper">
+    <!-- Printable Invoice Page in Viewport Container (Auto-scales on Mobile to preserve desktop look) -->
+    <div class="invoice-viewport-container">
+        <div class="invoice-scale-box">
+            <div class="invoice-wrapper">
 
         <!-- Top Header: Logo | QR | Store Details -->
         <table class="header-table">
@@ -642,6 +696,62 @@
         </table>
 
     </div>
+    </div>
+    </div>
+
+    <!-- Mobile View Auto-Fit Scaling Script (Eliminates phantom horizontal scroll) -->
+    <script>
+        function autoScaleInvoice() {
+            var wrapper = document.querySelector('.invoice-wrapper');
+            var scaleBox = document.querySelector('.invoice-scale-box');
+            if (!wrapper || !scaleBox) return;
+
+            var screenWidth = window.innerWidth || document.documentElement.clientWidth;
+            var targetWidth = 820;
+
+            if (screenWidth < targetWidth) {
+                var padding = screenWidth < 400 ? 12 : 20;
+                var availableWidth = screenWidth - padding;
+                var scale = availableWidth / targetWidth;
+                var scaledWidth = Math.round(targetWidth * scale);
+
+                // Temporarily reset to measure natural unscaled height
+                wrapper.style.transform = 'none';
+                wrapper.style.position = 'static';
+                var naturalHeight = wrapper.offsetHeight;
+
+                // Scale the wrapper inside the clipped scale box
+                wrapper.style.transformOrigin = 'top left';
+                wrapper.style.transform = 'scale(' + scale + ')';
+                wrapper.style.position = 'absolute';
+                wrapper.style.top = '0';
+                wrapper.style.left = '0';
+                wrapper.style.margin = '0';
+
+                // Scale box takes EXACT scaled width & height so NO extra scrollbar can exist!
+                var scaledHeight = Math.round(naturalHeight * scale);
+                scaleBox.style.width = scaledWidth + 'px';
+                scaleBox.style.height = scaledHeight + 'px';
+                scaleBox.style.overflow = 'hidden';
+                scaleBox.style.margin = '15px auto 40px auto';
+            } else {
+                wrapper.style.transform = 'none';
+                wrapper.style.position = 'static';
+                wrapper.style.margin = '0';
+                scaleBox.style.width = targetWidth + 'px';
+                scaleBox.style.height = 'auto';
+                scaleBox.style.overflow = 'visible';
+                scaleBox.style.margin = '20px auto 40px auto';
+            }
+        }
+
+        window.addEventListener('resize', autoScaleInvoice);
+        window.addEventListener('orientationchange', autoScaleInvoice);
+        window.addEventListener('DOMContentLoaded', autoScaleInvoice);
+        window.addEventListener('load', autoScaleInvoice);
+        setTimeout(autoScaleInvoice, 30);
+        setTimeout(autoScaleInvoice, 300);
+    </script>
 
     @if(request('print') == 1 || request('download') == 1)
     <script>

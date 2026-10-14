@@ -15,8 +15,8 @@ class ShippingMethodResource extends Resource
 {
     protected static ?string $model = ShippingMethod::class;
     protected static ?string $navigationIcon = 'heroicon-o-truck';
-    protected static ?int $navigationSort = 1;
-    protected static ?string $navigationGroup = 'Shipping & Delivery';
+    protected static ?int $navigationSort = 3;
+    protected static ?string $navigationGroup = 'Settings';
     protected static ?string $navigationLabel = 'Shipping Methods';
     protected static ?string $modelLabel = 'Shipping Method';
 
