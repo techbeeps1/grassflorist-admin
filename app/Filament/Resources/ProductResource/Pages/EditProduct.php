@@ -16,32 +16,26 @@ class EditProduct extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            // UPDATE BUTTON
-            Action::make('update')
-                ->label('Update Product')
-                ->icon('heroicon-o-check')
-                ->color('primary')
-                ->action(function () {
-                    $this->save();
-                }),
-
-            // VIEW PRODUCT
+            // 1. VIEW PRODUCT (Storefront Link)
             Action::make('view')
                 ->label('View Product')
-                ->icon('heroicon-o-eye')
+                ->icon('heroicon-o-arrow-top-right-on-square')
                 ->color('info')
-                ->url(
-                    fn () =>
-                    rtrim(config('app.frontend_url'), '/') .
-                    '/product-detail/' .
-                    $this->record->slug
-                )
+                ->url(function () {
+                    $frontendUrl = rtrim(config('app.frontend_url') ?: env('FRONTEND_URL', 'https://grassflorist.com'), '/');
+                    $slug = $this->record->slug;
+                    return "{$frontendUrl}/en/product/{$slug}";
+                })
                 ->openUrlInNewTab(),
 
-            // DUPLICATE
+            // 2. DUPLICATE (Copy/Clone Action)
             Action::make('duplicate')
                 ->label('Duplicate')
                 ->icon('heroicon-o-document-duplicate')
+                ->color('warning')
+                ->requiresConfirmation()
+                ->modalHeading('Duplicate Product')
+                ->modalDescription('Are you sure you want to duplicate this product? A new draft copy will be created.')
                 ->action(function () {
                     $duplicate = $this->record->replicate();
 
@@ -61,8 +55,19 @@ class EditProduct extends EditRecord
                     );
                 }),
 
-            // DELETE
-            Actions\DeleteAction::make(),
+            // 3. UPDATE PRODUCT (Primary Save Action)
+            Action::make('update')
+                ->label('Update Product')
+                ->icon('heroicon-o-check-circle')
+                ->color('success')
+                ->action(function () {
+                    $this->save();
+                }),
+
+            // 4. DELETE (Destructive Action)
+            Actions\DeleteAction::make()
+                ->icon('heroicon-o-trash')
+                ->color('danger'),
         ];
     }
 

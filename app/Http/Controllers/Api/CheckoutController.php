@@ -831,14 +831,17 @@ class CheckoutController extends Controller
             ?: ($request->customer_email 
             ?: ($request->input('billing_address.email') 
             ?: ($request->input('customer.email') 
+            ?: (auth('customer')->user()?->email
             ?: (auth('api')->user()?->email 
-            ?: (auth()->user()?->email ?: null)))));
+            ?: (auth()->user()?->email ?: null))))));
         $email = $rawEmail ? trim(strtolower((string)$rawEmail)) : null;
         $phone = $request->phone ? preg_replace('/\D/', '', (string)$request->phone) : null;
         if ($phone && strlen($phone) > 10) {
             $phone = substr($phone, -10);
         }
-        $userId = $request->user_id ?? (auth('api')->id() ?: (auth()->id() ?: null));
+        $userId = $request->user_id ?? (auth('customer')->id() ?: (auth('api')->id() ?: (auth()->id() ?: null)));
+
+        $isAr = $request->header('X-Locale') === 'ar' || $request->input('locale') === 'ar' || app()->getLocale() === 'ar';
 
         // 5. First Order Only (New Customer Only)
         if (!empty($coupon->is_first_order_only)) {
@@ -860,7 +863,9 @@ class CheckoutController extends Controller
             }
 
             if ($hasPreviousOrders) {
-                return 'This coupon is valid only on your first order.';
+                return $isAr
+                    ? 'هذا الكوبون صالح فقط لطلبك الأول للعملاء الجدد.'
+                    : 'This coupon is valid only on your first order.';
             }
         }
 
@@ -892,20 +897,24 @@ class CheckoutController extends Controller
                     ->count();
 
                 if ($customerUsageCount >= $userLimit) {
-                    return $userLimit === 1
-                        ? 'You have already used this coupon on a previous order.'
+                    if ($userLimit === 1) {
+                        return $isAr
+                            ? 'لقد استخدمت هذا الكوبون بالفعل في طلب سابق.'
+                            : 'You have already used this coupon on a previous order.';
+                    }
+                    return $isAr
+                        ? "لقد وصلت إلى الحد الأقصى المسموح به لاستخدام هذا الكوبون ({$userLimit} مرات)."
                         : "You have reached the maximum allowed usage ({$userLimit} times) for this coupon.";
                 }
             }
         }
 
-        // 7. Newsletter Subscriber Only Check (e.g. SAVE10 / WELCOME10)
-        if (in_array(strtoupper(trim((string)$coupon->code)), ['SAVE10', 'WELCOME10'], true)) {
-            $isAr = $request->header('X-Locale') === 'ar' || $request->input('locale') === 'ar' || app()->getLocale() === 'ar';
+        // 7. Newsletter Subscriber Only Check (Configured via is_subscriber_only toggle)
+        if (!empty($coupon->is_subscriber_only) || in_array(strtoupper(trim((string)$coupon->code)), ['SAVE10', 'WELCOME10'], true)) {
             if (!$email) {
                 return $isAr
-                    ? 'يرجى إدخال البريد الإلكتروني في تفاصيل الطلب للتحقق من أهلية كود المشتركين.'
-                    : 'Please provide your email address in order details to verify subscriber discount eligibility.';
+                    ? 'يرجى إدخال البريد الإلكتروني للتحقق من أهلية كود المشتركين في النشرة البريدية.'
+                    : 'Please enter your email address to verify newsletter subscriber eligibility.';
             }
 
             $isSubscribed = \App\Models\NewsletterSubscriber::where('email', $email)
@@ -913,8 +922,8 @@ class CheckoutController extends Controller
                 ->exists();
             if (!$isSubscribed) {
                 return $isAr
-                    ? 'هذا الكوبون مخصص حصرياً للمشتركين في النادي البريدي. يرجى الاشتراك أولاً للاستفادة من الخصم.'
-                    : 'This coupon is valid exclusively for newsletter subscribers. Please subscribe first to claim your 10% discount.';
+                    ? 'هذا الكوبون مخصص حصرياً للمشتركين في النشرة البريدية. يرجى الاشتراك في النشرة أولاً للاستفادة من الخصم.'
+                    : 'This coupon is valid exclusively for newsletter subscribers. Please subscribe to our newsletter first to use this discount.';
             }
         }
 
@@ -993,6 +1002,7 @@ class CheckoutController extends Controller
                     'max_cart_amount',
                     'user_limit',
                     'is_first_order_only',
+                    'is_subscriber_only',
                     'payment_method_restriction',
                     'valid_from',
                     'valid_to'
@@ -1001,6 +1011,7 @@ class CheckoutController extends Controller
                 ->get()
                 ->map(function ($coupon) {
                     $coupon->is_first_order_only = (bool)($coupon->is_first_order_only ?? false);
+                    $coupon->is_subscriber_only = (bool)($coupon->is_subscriber_only ?? false);
                     return $coupon;
                 });
 

@@ -54,76 +54,121 @@ class SubscriptionResource extends Resource
         return $form
             ->schema([
                 Grid::make(3)->schema([
-                    // Main Information (2 columns)
-                    Section::make('Subscription Overview')
-                        ->schema([
-                            TextInput::make('subscription_number')
-                                ->label('Subscription #')
-                                ->disabled()
-                                ->dehydrated(false),
+                    // Main Information & Payment Tokenization (2 columns)
+                    Grid::make(1)->schema([
+                        Section::make('Subscription Overview')
+                            ->schema([
+                                TextInput::make('subscription_number')
+                                    ->label('Subscription #')
+                                    ->disabled()
+                                    ->dehydrated(false),
 
-                            Select::make('customer_id')
-                                ->label('Customer')
-                                ->relationship('customer', 'username')
-                                ->getOptionLabelFromRecordUsing(fn (Customer $record) => "{$record->name} ({$record->email})")
-                                ->searchable()
-                                ->preload()
-                                ->required(),
+                                Select::make('customer_id')
+                                    ->label('Customer')
+                                    ->relationship('customer', 'username')
+                                    ->getOptionLabelFromRecordUsing(fn (Customer $record) => "{$record->name} ({$record->email})")
+                                    ->searchable()
+                                    ->preload()
+                                    ->required(),
 
-                            Select::make('product_id')
-                                ->label('Product')
-                                ->relationship('product', 'sku')
-                                ->getOptionLabelFromRecordUsing(fn (Product $record) => format_translatable($record->name, 'en') ?: $record->sku)
-                                ->searchable()
-                                ->preload()
-                                ->required(),
+                                Select::make('product_id')
+                                    ->label('Product')
+                                    ->relationship('product', 'sku')
+                                    ->getOptionLabelFromRecordUsing(fn (Product $record) => format_translatable($record->name, 'en') ?: $record->sku)
+                                    ->searchable()
+                                    ->preload()
+                                    ->required(),
 
-                            TextInput::make('quantity')
-                                ->label('Quantity per Delivery')
-                                ->numeric()
-                                ->minValue(1)
-                                ->required(),
+                                TextInput::make('quantity')
+                                    ->label('Quantity per Delivery')
+                                    ->numeric()
+                                    ->minValue(1)
+                                    ->required(),
 
-                            Select::make('frequency')
-                                ->label('Frequency')
-                                ->options([
-                                    'weekly' => 'Every Week (7 days)',
-                                    'biweekly' => 'Every 2 Weeks (14 days)',
-                                    'monthly' => 'Every Month (30 days)',
-                                    'custom' => 'Custom Dates',
-                                ])
-                                ->required(),
+                                Select::make('frequency')
+                                    ->label('Frequency')
+                                    ->options([
+                                        'weekly' => 'Every Week (7 days)',
+                                        'biweekly' => 'Every 2 Weeks (14 days)',
+                                        'monthly' => 'Every Month (30 days)',
+                                        'custom' => 'Custom Dates',
+                                    ])
+                                    ->required(),
 
-                            Select::make('duration_type')
-                                ->label('Plan Duration')
-                                ->options([
-                                    '1_month' => '1 Month',
-                                    '3_months' => '3 Months',
-                                    '6_months' => '6 Months',
-                                    '12_months' => '12 Months',
-                                    'until_cancelled' => 'Until Cancelled (Ongoing)',
-                                    'custom' => 'Custom Plan',
-                                ])
-                                ->required(),
+                                Select::make('duration_type')
+                                    ->label('Plan Duration')
+                                    ->options([
+                                        '1_month' => '1 Month',
+                                        '3_months' => '3 Months',
+                                        '6_months' => '6 Months',
+                                        '12_months' => '12 Months',
+                                        'until_cancelled' => 'Until Cancelled (Ongoing)',
+                                        'custom' => 'Custom Plan',
+                                    ])
+                                    ->required(),
 
-                            Forms\Components\DatePicker::make('start_date')
-                                ->label('Start Date')
-                                ->required(),
+                                Forms\Components\DatePicker::make('start_date')
+                                    ->label('Start Date')
+                                    ->required(),
 
-                            Forms\Components\DatePicker::make('next_delivery_date')
-                                ->label('Next Delivery Date'),
+                                Forms\Components\DatePicker::make('next_delivery_date')
+                                    ->label('Next Delivery Date'),
 
-                            TextInput::make('delivery_time_slot')
-                                ->label('Time Slot')
-                                ->placeholder('Morning (09:00 AM - 01:00 PM)'),
+                                TextInput::make('delivery_time_slot')
+                                    ->label('Time Slot')
+                                    ->placeholder('Morning (09:00 AM - 01:00 PM)'),
 
-                            Textarea::make('gift_message')
-                                ->label('Gift Card Message')
-                                ->rows(2)
-                                ->columnSpanFull(),
-                        ])
-                        ->columns(2)
-                        ->columnSpan(2),
+                                Textarea::make('gift_message')
+                                    ->label('Gift Card Message')
+                                    ->rows(2)
+                                    ->columnSpanFull(),
+                            ])
+                            ->columns(2),
+
+                        Section::make('Payment Tokenization')
+                            ->schema([
+                                TextInput::make('payment_gateway')
+                                    ->label('Gateway')
+                                    ->disabled(),
+
+                                Placeholder::make('card_summary')
+                                    ->label('Card / Method')
+                                    ->content(function (?Subscription $record) {
+                                        if (!$record || empty($record->payment_token_details)) {
+                                            return '—';
+                                        }
+                                        $details = is_array($record->payment_token_details)
+                                            ? $record->payment_token_details
+                                            : json_decode($record->payment_token_details, true);
+                                        $brand = $details['brand'] ?? $details['payment_brand'] ?? 'Card';
+                                        $last4 = $details['last4'] ?? $details['card_last4'] ?? '';
+                                        return $last4 ? strtoupper($brand) . ' •••• ' . $last4 : strtoupper($brand);
+                                    }),
+
+                                TextInput::make('consecutive_failed_payments')
+                                    ->label('Consecutive Failures')
+                                    ->numeric()
+                                    ->disabled(),
+
+                                TextInput::make('payment_token')
+                                    ->label('Saved Token / Registration ID')
+                                    ->password()
+                                    ->revealable()
+                                    ->disabled()
+                                    ->columnSpan(2),
+
+                                Forms\Components\DatePicker::make('next_billing_date')
+                                    ->label('Next Billing Date')
+                                    ->disabled(),
+
+                                TextInput::make('last_payment_error')
+                                    ->label('Last Payment Error')
+                                    ->disabled()
+                                    ->columnSpanFull()
+                                    ->visible(fn (?Subscription $record) => !empty($record?->last_payment_error)),
+                            ])
+                            ->columns(3),
+                    ])->columnSpan(2),
 
                     // Status & Financial Snapshot (1 column)
                     Grid::make(1)->schema([
@@ -182,24 +227,6 @@ class SubscriptionResource extends Resource
                                     ->numeric()
                                     ->prefix('SAR')
                                     ->extraInputAttributes(['class' => 'font-bold text-success-600']),
-                            ]),
-
-                        Section::make('Payment Tokenization')
-                            ->schema([
-                                TextInput::make('payment_gateway')
-                                    ->label('Gateway')
-                                    ->disabled(),
-
-                                TextInput::make('payment_token')
-                                    ->label('Saved Token / Registration ID')
-                                    ->password()
-                                    ->revealable()
-                                    ->disabled(),
-
-                                TextInput::make('consecutive_failed_payments')
-                                    ->label('Consecutive Failures')
-                                    ->numeric()
-                                    ->disabled(),
                             ]),
                     ])->columnSpan(1),
                 ]),

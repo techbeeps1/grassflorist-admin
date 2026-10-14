@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Product;
+use App\Models\Category;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
@@ -38,14 +39,34 @@ class ProductSearchController extends Controller
     {
         $locale = $this->getLocale($request);
         $query = Product::visibleToCustomers();
+        $matchingCategories = collect();
 
-        // 1. Keyword search
+        // 1. Keyword search (searches products AND categories)
         $searchTerm = $request->input('q', $request->input('key', $request->input('query')));
         if (!empty($searchTerm) && trim($searchTerm) !== '') {
             $rawTokens = preg_split('/[\s,\-_+\/]+/u', trim($searchTerm));
             $tokens = array_values(array_filter($rawTokens, fn ($t) => strlen(trim($t)) > 0));
 
-            $query->where(function ($subQuery) use ($tokens) {
+            // Find matching categories by name, slug, slug_ar, or description
+            $matchingCategories = Category::where('is_visible', true)
+                ->where(function ($catQuery) use ($tokens, $searchTerm) {
+                    $catQuery->where('name', 'like', "%{$searchTerm}%")
+                             ->orWhere('slug', 'like', "%{$searchTerm}%")
+                             ->orWhere('slug_ar', 'like', "%{$searchTerm}%")
+                             ->orWhere('description', 'like', "%{$searchTerm}%");
+
+                    foreach ($tokens as $token) {
+                        $catQuery->orWhere('name', 'like', "%{$token}%")
+                                 ->orWhere('slug', 'like', "%{$token}%")
+                                 ->orWhere('slug_ar', 'like', "%{$token}%");
+                    }
+                })
+                ->get();
+
+            $matchingCategoryIds = $matchingCategories->pluck('id')->toArray();
+
+            $query->where(function ($subQuery) use ($tokens, $matchingCategoryIds) {
+                // Match products by name, description, sku, slug
                 foreach ($tokens as $token) {
                     $subQuery->orWhere(function ($q) use ($token) {
                         $q->where('name', 'like', "%{$token}%")
@@ -54,6 +75,12 @@ class ProductSearchController extends Controller
                           ->orWhere('slug', 'like', "%{$token}%")
                           ->orWhere('slug_ar', 'like', "%{$token}%");
                     });
+                }
+
+                // If any category matches the search term, include all products belonging to it
+                foreach ($matchingCategoryIds as $catId) {
+                    $subQuery->orWhereJsonContains('category_id', (int) $catId)
+                             ->orWhereJsonContains('category_id', (string) $catId);
                 }
             });
         }
@@ -95,10 +122,16 @@ class ProductSearchController extends Controller
         $products = $query->paginate($perPage);
 
         $productController = app(ProductController::class);
+        $categoryController = app(CategoryController::class);
+
+        $formattedProducts = collect($products->items())->map(fn ($p) => $productController->formatCardProduct($p, $locale))->values();
+        $formattedCategories = $matchingCategories->map(fn ($c) => $categoryController->formatCategory($c, $locale))->values();
 
         return response()->json([
+            'categories' => $formattedCategories,
             'current_page' => $products->currentPage(),
-            'data' => collect($products->items())->map(fn ($p) => $productController->formatCardProduct($p, $locale))->values(),
+            'data' => $formattedProducts,
+            'products' => $formattedProducts,
             'first_page_url' => $products->url(1),
             'from' => $products->firstItem(),
             'last_page' => $products->lastPage(),

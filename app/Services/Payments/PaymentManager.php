@@ -55,8 +55,42 @@ class PaymentManager
                 if (!empty($transactionId)) {
                     $order->razorpay_payment_id = $transactionId; // Transaction Ref
                 }
-                if (!empty($gateway)) {
-                    $order->payment_method = strtolower($gateway);
+
+                $meta = is_array($order->meta_data) ? $order->meta_data : [];
+                $meta['payment_gateway'] = $gateway ?? $meta['payment_gateway'] ?? 'hyperpay';
+
+                $brand = $rawPayload['paymentBrand'] ?? $rawPayload['brand'] ?? $meta['payment_brand'] ?? null;
+                if ($brand) {
+                    $meta['payment_brand'] = $brand;
+                }
+                if (!empty($rawPayload['card'])) {
+                    $meta['payment_card'] = [
+                        'last4' => $rawPayload['card']['last4Digits'] ?? null,
+                        'holder' => $rawPayload['card']['holder'] ?? null,
+                        'bank' => $rawPayload['card']['issuer']['bank'] ?? null,
+                        'type' => $rawPayload['card']['type'] ?? null,
+                    ];
+                }
+                $order->meta_data = $meta;
+
+                // Determine specific payment method
+                $normBrand = strtolower((string)$brand);
+                if (str_contains($normBrand, 'mada')) {
+                    $order->payment_method = 'mada';
+                } elseif (str_contains($normBrand, 'apple')) {
+                    $order->payment_method = 'apple_pay';
+                } elseif (str_contains($normBrand, 'stc')) {
+                    $order->payment_method = 'stc_pay';
+                } elseif (str_contains($normBrand, 'visa')) {
+                    $order->payment_method = 'visa';
+                } elseif (str_contains($normBrand, 'master')) {
+                    $order->payment_method = 'mastercard';
+                } elseif (str_contains($normBrand, 'amex')) {
+                    $order->payment_method = 'amex';
+                } elseif (empty($order->payment_method) || in_array($order->payment_method, ['hyperpay', 'card'])) {
+                    if (!empty($gateway)) {
+                        $order->payment_method = strtolower($gateway);
+                    }
                 }
                 if (strtolower((string)$order->payment_method) === 'paypal') {
                     $order->currency = 'USD';

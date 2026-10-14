@@ -8,8 +8,10 @@ use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
+use Filament\Tables\Enums\FiltersLayout;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class SubscriptionDeliveryResource extends Resource
 {
@@ -138,6 +140,7 @@ class SubscriptionDeliveryResource extends Resource
             ->defaultSort('scheduled_date', 'asc')
             ->filters([
                 SelectFilter::make('delivery_status')
+                    ->label('Delivery Status')
                     ->options([
                         'scheduled' => 'Scheduled',
                         'processing' => 'Processing',
@@ -145,14 +148,51 @@ class SubscriptionDeliveryResource extends Resource
                         'skipped' => 'Skipped',
                         'rescheduled' => 'Rescheduled',
                         'failed' => 'Failed',
+                        'cancelled' => 'Cancelled',
                     ]),
+
+                SelectFilter::make('order_status')
+                    ->label('Order Status')
+                    ->options([
+                        'pending' => 'Pending',
+                        'pending_payment' => 'Pending Payment',
+                        'processing' => 'Processing',
+                        'printed' => 'Printed',
+                        'shipped' => 'Shipped',
+                        'delivered' => 'Delivered',
+                        'completed' => 'Completed',
+                        'cancelled' => 'Cancelled',
+                        'failed' => 'Failed',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (!empty($data['value'])) {
+                            return $query->whereHas('order', function (Builder $q) use ($data) {
+                                $q->where('status', $data['value']);
+                            });
+                        }
+                        return $query;
+                    }),
+
                 SelectFilter::make('payment_status')
+                    ->label('Payment Status')
                     ->options([
                         'pending' => 'Pending',
                         'paid' => 'Paid',
                         'failed' => 'Failed',
                     ]),
+
+                Tables\Filters\Filter::make('scheduled_date')
+                    ->form([
+                        Forms\Components\DatePicker::make('scheduled_from')->label('Scheduled From'),
+                        Forms\Components\DatePicker::make('scheduled_until')->label('Scheduled Until'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when($data['scheduled_from'], fn ($q, $date) => $q->whereDate('scheduled_date', '>=', $date))
+                            ->when($data['scheduled_until'], fn ($q, $date) => $q->whereDate('scheduled_date', '<=', $date));
+                    }),
             ])
+            ->filtersLayout(FiltersLayout::AboveContentCollapsible)
             ->actions([
                 Tables\Actions\EditAction::make(),
             ]);

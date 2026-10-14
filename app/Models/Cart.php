@@ -154,9 +154,9 @@ class Cart extends Model
 
         $itemsSummary = [];
         foreach ($this->items->take(3) as $item) {
-            $productName = $item->product?->name ?? 'Product';
-            if (strlen($productName) > 40) {
-                $productName = substr($productName, 0, 37) . '...';
+            $productName = format_translatable($item->product?->name, 'en') ?: ($item->product?->sku ?? 'Product');
+            if (mb_strlen($productName) > 40) {
+                $productName = mb_substr($productName, 0, 37) . '...';
             }
             $itemsSummary[] = "- {$productName} (Qty: {$item->quantity})";
         }

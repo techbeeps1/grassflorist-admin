@@ -3,7 +3,6 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ProductController;
-use App\Http\Controllers\Api\PublicationController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\ProductSearchController;
@@ -19,14 +18,10 @@ use App\Http\Controllers\Api\OrderApiController;
 use App\Http\Controllers\Api\HomePageController;
 use App\Http\Controllers\Api\ContactFormController;
 use App\Http\Controllers\Api\ContactPageController;
-use App\Http\Controllers\Api\NewsController;
 use App\Http\Controllers\Api\CustomerForgotPasswordController;
 use App\Http\Controllers\Api\CustomerResetPasswordController;
-use App\Http\Controllers\Api\StateController;
 use App\Http\Controllers\Api\NewsletterController;
 use App\Http\Controllers\Api\WishlistController;
-use App\Http\Controllers\Api\SitemapController;
-use App\Http\Controllers\Api\VendorRegistrationController;
 use App\Http\Controllers\Api\GlobalSettingController;
 use App\Http\Controllers\Api\TestimonialController;
 use App\Http\Controllers\Api\FaqController;
@@ -39,43 +34,42 @@ use App\Http\Controllers\Api\FaqController;
 | first-class URL prefix localization across all endpoints.
 */
 $registerStoreRoutes = function () {
-    // Basic API
+    // 🌸 Catalog & Navigation
     Route::get('/category', [CategoryController::class, 'index']);
     Route::get('/products', [ProductController::class, 'index']);
     Route::get('/products/{slug}', [ProductController::class, 'show']);
     Route::get('/category/{slug}', [ProductController::class, 'productsByCategorySlug']);
-    Route::get('/publications', [PublicationController::class, 'index']);
-    Route::get('/publication/{slug}', [PublicationController::class, 'productsBySlug']);
     Route::get('/search', [ProductSearchController::class, 'search']);
     Route::get('/navigation', [MenuController::class, 'getNavigation']);
     Route::get('menus/{menuName}', [MenuController::class, 'getMenuItems']);
     Route::get('/shipping-methods', [\App\Http\Controllers\Api\ShippingMethodController::class, 'index']);
 
-    // Forgot Password
+    // 🔒 Auth & Password Reset
     Route::post('/forgot-password', [ForgotPasswordController::class, 'sendResetLinkEmail']);
+    Route::post('/customer/forgot-password', [CustomerForgotPasswordController::class, 'sendResetLinkEmail']);
+    Route::post('/customer/reset-password', [CustomerResetPasswordController::class, 'reset']);
 
-    // Newsletter Subscription
-    Route::post('/newsletter/subscribe', [\App\Http\Controllers\Api\NewsletterController::class, 'subscribe']);
-    Route::post('/newsletter', [\App\Http\Controllers\Api\NewsletterController::class, 'subscribe']);
+    // 💌 Newsletter Subscription
+    Route::post('/newsletter', [NewsletterController::class, 'subscribe']);
 
-    // Cart & Checkout
+    // 🛒 Cart & Checkout (Canonical Endpoints)
     Route::prefix('cart')->group(function () {
-        Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->get('/viewcart', [CartController::class, 'viewcart']);
-        Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->match(['get', 'post'], '/empty', [CartController::class, 'empty']);
-        Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->post('add', [CartController::class, 'add']);
-        Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->post('merge', [CartController::class, 'merge']);
-        Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->post('cartupdate', [CartController::class, 'cartupdate']);
-        Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->post('remove', [CartController::class, 'remove']);
-        Route::middleware(['api', \Illuminate\Session\Middleware\StartSession::class])->match(['get', 'post'], '/clear', [CartController::class, 'clear']);
+        Route::middleware(['api', StartSession::class])->get('/viewcart', [CartController::class, 'viewcart']);
+        Route::middleware(['api', StartSession::class])->match(['get', 'post'], '/empty', [CartController::class, 'empty']);
+        Route::middleware(['api', StartSession::class])->post('add', [CartController::class, 'add']);
+        Route::middleware(['api', StartSession::class])->post('merge', [CartController::class, 'merge']);
+        Route::middleware(['api', StartSession::class])->post('cartupdate', [CartController::class, 'cartupdate']);
+        Route::middleware(['api', StartSession::class])->post('remove', [CartController::class, 'remove']);
+        Route::middleware(['api', StartSession::class])->match(['get', 'post'], '/clear', [CartController::class, 'clear']);
         Route::post('/checkout', [CheckoutController::class, 'process']);
         Route::post('/sync-customer', [CartController::class, 'syncCustomer']);
-        Route::post('/recover', [CartController::class, 'recover']);
         Route::post('/coupon/{coupon_code}', [CheckoutController::class, 'showCouponCode']);
         Route::get('/coupons', [CheckoutController::class, 'getAvailableCoupons']);
     });
 
     Route::get('orders/{order_number}', [OrderApiController::class, 'show']);
 
+    // 👤 Customer Account & Protected Dashboards
     Route::prefix('my-account')->group(function () {
         // Unprotected refresh & email verification endpoints
         Route::post('/refresh', [AuthController::class, 'refresh']);
@@ -98,7 +92,7 @@ $registerStoreRoutes = function () {
             Route::delete('/delete-wishlist', [WishlistController::class, 'destroy']);
         });
 
-        // Subscriptions Dashboard Actions
+        // 📅 Subscriptions Customer Dashboard Actions
         Route::get('/subscriptions', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'index']);
         Route::get('/subscriptions/{id}', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'show']);
         Route::post('/subscriptions/{id}/pause', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'pause']);
@@ -111,90 +105,50 @@ $registerStoreRoutes = function () {
         Route::post('/subscriptions/{id}/retry-payment', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'retryPayment']);
     });
 
-    // Subscription Public Deals & Plans Endpoints
+    // 🌸 Subscription Public Deals & Pricing Endpoints
     Route::get('/subscription-plans', [\App\Http\Controllers\Api\SubscriptionPlanController::class, 'index']);
     Route::get('/subscription-plans/{slug}', [\App\Http\Controllers\Api\SubscriptionPlanController::class, 'show']);
-
-    // Subscription Public Checkout & Pricing Endpoints
     Route::get('/subscriptions/settings', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'settings']);
     Route::post('/subscriptions/calculate', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'calculate']);
     Route::post('/subscriptions/checkout', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'checkout']);
-    Route::get('/customer/subscriptions', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'index']);
-    Route::get('/customer/subscriptions/{id}', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'show']);
-    Route::post('/customer/subscriptions/{id}/pause', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'pause']);
-    Route::post('/customer/subscriptions/{id}/resume', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'resume']);
-    Route::post('/customer/subscriptions/{id}/skip-next', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'skipNext']);
-    Route::post('/customer/subscriptions/{id}/deliveries/{deliveryId}/reschedule', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'reschedule']);
-    Route::post('/customer/subscriptions/{id}/address', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'updateAddress']);
-    Route::post('/customer/subscriptions/{id}/quantity', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'updateQuantity']);
-    Route::post('/customer/subscriptions/{id}/cancel', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'cancel']);
-    Route::post('/customer/subscriptions/{id}/retry-payment', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'retryPayment']);
 
-    // Auth user (Login & Register)
+    // 🔑 Auth API (v1)
     Route::prefix('v1')->group(function () {
         Route::post('/register', [AuthController::class, 'register']);
         Route::post('/login', [AuthController::class, 'login']);
-        Route::post('/checkuser', [AuthController::class, 'checkuser']);
         Route::post('/updateuser', [AuthController::class, 'updateuser']);
     });
 
-    // CMS Pages & Blog
+    // 📄 CMS Pages & Blog
     Route::get('cms-pages', [CmsPageController::class, 'index']);
     Route::get('cms-pages/{slug}', [CmsPageController::class, 'showBySlug']);
     Route::get('blog', [CmsPostController::class, 'index']);
     Route::get('blog/{slug}', [CmsPostController::class, 'showBySlug']);
 
-    // News
-    Route::apiResource('news', NewsController::class);
-    Route::get('news/{slug}', [NewsController::class, 'newsBySlug']);
-
-    // Home Page & Global Settings
+    // 🏠 Home Page & Global Settings
     Route::get('/home-page', [HomePageController::class, 'index']);
     Route::get('/contact-page', [ContactPageController::class, 'index']);
     Route::get('/global-settings', [GlobalSettingController::class, 'index']);
     Route::post('/global-settings/fetch-currency-rate', [GlobalSettingController::class, 'fetchCurrencyRate']);
     Route::get('/currency-rates', [GlobalSettingController::class, 'fetchCurrencyRate']);
 
-    // Testimonials & FAQs
+    // ⭐ Testimonials, Reviews & FAQs
     Route::get('/testimonials', [TestimonialController::class, 'index']);
-    Route::get('/testimonials/limit={limit}', [TestimonialController::class, 'index']);
-    Route::get('/testimonials/{limit}', [TestimonialController::class, 'index'])->whereNumber('limit');
+    Route::get('/google-reviews', [\App\Http\Controllers\Api\GoogleReviewController::class, 'index']);
     Route::get('/faqs', [FaqController::class, 'index']);
 
-    // Contact & Inquiries Forms
+    // 📝 Contact & Inquiries Forms
     Route::post('/contact-form', [ContactFormController::class, 'send']);
     Route::post('/event-booking', [\App\Http\Controllers\Api\EventBookingController::class, 'store']);
     Route::post('/partner-with-us', [\App\Http\Controllers\Api\PartnerWithUsController::class, 'store']);
-    Route::post('/tutor-form', [ContactFormController::class, 'submitTutorForm']);
-    Route::post('/vendor-form', [ContactFormController::class, 'submitVendorForm']);
-    Route::post('/product-request', [ContactFormController::class, 'submitProductRequest']);
 
-    Route::post('/customer/forgot-password', [CustomerForgotPasswordController::class, 'sendResetLinkEmail']);
-    Route::post('/customer/reset-password', [CustomerResetPasswordController::class, 'reset']);
-
-    Route::get('/state-of-india', [StateController::class, 'index']);
-    Route::get('/google-reviews', [\App\Http\Controllers\Api\GoogleReviewController::class, 'index']);
-    Route::get('/sitemap-data', [SitemapController::class, 'index']);
-    Route::post('/vendor-register', [VendorRegistrationController::class, 'register']);
-
-    // Saudi Payment Gateways & Delivery Slots APIs (v1)
+    // 💳 Saudi Payment Gateways & Delivery Slots APIs (v1)
     Route::prefix('v1')->group(function () {
-        Route::get('/shipping-methods', [\App\Http\Controllers\Api\ShippingMethodController::class, 'index']);
         Route::get('/payment-methods', [\App\Http\Controllers\Api\StorefrontPaymentController::class, 'getPaymentMethods']);
         Route::get('/delivery-slots', [\App\Http\Controllers\Api\StorefrontPaymentController::class, 'getDeliverySlots']);
         Route::get('/delivery-slots/blocked-dates', [\App\Http\Controllers\Api\StorefrontPaymentController::class, 'getBlockedDeliveryDates']);
-        Route::get('/testimonials', [\App\Http\Controllers\Api\TestimonialController::class, 'index']);
-        Route::get('/google-reviews', [\App\Http\Controllers\Api\GoogleReviewController::class, 'index']);
-        Route::get('/faqs', [\App\Http\Controllers\Api\FaqController::class, 'index']);
         Route::post('/payments/initiate', [\App\Http\Controllers\Api\StorefrontPaymentController::class, 'initiatePayment']);
         Route::post('/payments/verify', [\App\Http\Controllers\Api\StorefrontPaymentController::class, 'verifyPaymentStatus']);
-
-        // Cart APIs under v1
-        Route::get('/cart/viewcart', [\App\Http\Controllers\Api\CartController::class, 'viewcart']);
-        Route::post('/cart/merge', [\App\Http\Controllers\Api\CartController::class, 'merge']);
-        Route::post('/cart/add', [\App\Http\Controllers\Api\CartController::class, 'add']);
-        Route::post('/cart/cartupdate', [\App\Http\Controllers\Api\CartController::class, 'cartupdate']);
-        Route::post('/cart/remove', [\App\Http\Controllers\Api\CartController::class, 'remove']);
     });
 };
 
@@ -212,9 +166,7 @@ Route::fallback(function (Request $request) {
         if (
             !str_starts_with($sub, 'en/') &&
             !str_starts_with($sub, 'ar/') &&
-            !str_starts_with($sub, 'v1/webhooks/') &&
-            !str_starts_with($sub, 'cart/razorpay/') &&
-            !str_starts_with($sub, 'razorpay/')
+            !str_starts_with($sub, 'v1/webhooks/')
         ) {
             $prefix = ($request->header('X-Locale') === 'en' || $request->input('locale') === 'en' || $request->query('lang') === 'en') ? 'en' : 'ar';
             $target = '/api/' . $prefix . '/' . $sub;
@@ -231,12 +183,6 @@ Route::fallback(function (Request $request) {
 // --------------------------------------------------------------------------
 // Standalone Server-to-Server Payment Webhooks & Callbacks (No language prefix)
 // --------------------------------------------------------------------------
-Route::post('/cart/razorpay/callback', [CheckoutController::class, 'razorpayCallback'])->name('razorpay.callback');
-Route::post('/cart/razorpay/webhook', [CheckoutController::class, 'razorpayWebhook'])->name('razorpay.webhook.cart');
-Route::post('/cart/razorpay/cancel', [CheckoutController::class, 'handlePaymentCancel'])->name('razorpay.cancel');
-Route::post('/razorpay/webhook', [CheckoutController::class, 'razorpayWebhook'])->name('razorpay.webhook');
-Route::post('/razorpay/cancel', [CheckoutController::class, 'handlePaymentCancel'])->name('razorpay.cancel.direct');
-
 Route::prefix('v1/webhooks')->group(function () {
     Route::post('/hyperpay', [\App\Http\Controllers\Api\PaymentWebhookController::class, 'handleHyperPay']);
     Route::post('/tabby', [\App\Http\Controllers\Api\PaymentWebhookController::class, 'handleTabby']);

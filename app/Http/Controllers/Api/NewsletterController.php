@@ -31,6 +31,13 @@ class NewsletterController extends Controller
 
         $existing = NewsletterSubscriber::where('email', $email)->first();
 
+        // Look up active coupon flagged for subscribers (if configured)
+        $subscriberCoupon = \App\Models\Coupon::where('is_active', true)
+            ->where('is_subscriber_only', true)
+            ->latest('id')
+            ->first();
+        $couponCode = $subscriberCoupon ? $subscriberCoupon->code : null;
+
         if ($existing) {
             // If already subscribed and active
             if ($existing->status === 'active') {
@@ -38,10 +45,14 @@ class NewsletterController extends Controller
                     'status' => 'success',
                     'success' => true,
                     'already_subscribed' => true,
-                    'coupon_code' => $existing->coupon_code ?: 'SAVE10',
+                    'coupon_code' => $couponCode,
                     'message' => $locale === 'ar'
-                        ? 'أنت مشترك بالفعل في نادي غراس للزهور! كود الخصم الترحيبي الخاص بك هو: ' . ($existing->coupon_code ?: 'SAVE10')
-                        : 'You are already a member of the Grass Florist VIP Club! Your welcome coupon is: ' . ($existing->coupon_code ?: 'SAVE10'),
+                        ? ($couponCode
+                            ? 'أنت مشترك بالفعل في نادي غراس للزهور! كود الخصم الحصري للمشتركين هو: ' . $couponCode
+                            : 'أنت مشترك بالفعل في نادي غراس للزهور!')
+                        : ($couponCode
+                            ? 'You are already subscribed to the Grass Florist VIP Club! Your exclusive subscriber coupon is: ' . $couponCode
+                            : 'You are already subscribed to the Grass Florist VIP Club!'),
                 ]);
             }
 
@@ -56,14 +67,14 @@ class NewsletterController extends Controller
             $subscriber = NewsletterSubscriber::create([
                 'email' => $email,
                 'locale' => $locale,
-                'coupon_code' => 'SAVE10',
+                'coupon_code' => null, // Do not store coupon code on subscriber row
                 'status' => 'active',
                 'ip_address' => $request->ip(),
                 'subscribed_at' => now(),
             ]);
         }
 
-        // Dispatch Welcome Email with SAVE10 coupon & record in NotificationLog
+        // Dispatch Welcome Email (uses active subscriber coupon if available)
         try {
             /** @var NotificationService $notificationService */
             $notificationService = app(NotificationService::class);
@@ -75,10 +86,14 @@ class NewsletterController extends Controller
         return response()->json([
             'status' => 'success',
             'success' => true,
-            'coupon_code' => 'SAVE10',
+            'coupon_code' => $couponCode,
             'message' => $locale === 'ar'
-                ? 'شكراً لاشتراكك في نادي غراس! تم إرسال كود خصم 10% (SAVE10) إلى بريدك الإلكتروني.'
-                : 'Thank you for subscribing to Grass VIP Club! Your 10% discount code (SAVE10) has been sent to your email.',
+                ? ($couponCode
+                    ? 'شكراً لاشتراكك في نادي غراس! كود الخصم الخاص بك هو (' . $couponCode . ').'
+                    : 'شكراً لاشتراكك في النشرة البريدية لنادي غراس!')
+                : ($couponCode
+                    ? 'Thank you for subscribing to Grass VIP Club! Your discount code is (' . $couponCode . ').'
+                    : 'Thank you for subscribing to the Grass Florist newsletter!'),
         ]);
     }
 }

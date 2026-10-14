@@ -65,12 +65,12 @@ class GlobalSettingResource extends Resource
                 Forms\Components\Tabs::make('Global Settings')
                     ->tabs([
                         // =========================================================================
-                        // TAB 1: BRANDING & IDENTITY (الهوية البصرية)
+                        // TAB 1: BRANDING & IDENTITY
                         // =========================================================================
                         Forms\Components\Tabs\Tab::make('Branding & Assets')
                             ->icon('heroicon-o-photo')
                             ->schema([
-                                Forms\Components\Section::make('Logos & Favicon (الشعارات وأيقونة المتصفح)')
+                                Forms\Components\Section::make('Logos & Favicon')
                                     ->description('Upload header brand logo, dark/footer logo, and browser tab favicon.')
                                     ->schema([
                                         Forms\Components\FileUpload::make('site_logo')
@@ -107,7 +107,7 @@ class GlobalSettingResource extends Resource
                                     ])
                                     ->columns(3),
 
-                                Forms\Components\Section::make('Website Identity & Name (اسم الموقع والشعار اللفظي)')
+                                Forms\Components\Section::make('Website Identity & Name')
                                     ->description('Configure brand name and tagline in both English and Arabic.')
                                     ->schema([
                                         Forms\Components\TextInput::make('site_name_en')
@@ -131,7 +131,7 @@ class GlobalSettingResource extends Resource
                                             ->maxLength(150),
 
                                         Forms\Components\Select::make('timezone')
-                                            ->label('Store Operating Timezone (المنطقة الزمنية للمتجر)')
+                                            ->label('Store Operating Timezone')
                                             ->options([
                                                 'Asia/Riyadh' => '🇸🇦 Saudi Arabia – Riyadh (AST / GMT+3)',
                                                 'Asia/Dubai' => '🇦🇪 United Arab Emirates – Dubai (GST / GMT+4)',
@@ -150,12 +150,12 @@ class GlobalSettingResource extends Resource
                             ]),
 
                         // =========================================================================
-                        // TAB 2: TOP ANNOUNCEMENT BAR (الشريط العلوي)
+                        // TAB 2: TOP ANNOUNCEMENT BAR
                         // =========================================================================
                         Forms\Components\Tabs\Tab::make('Top Announcement Bar')
                             ->icon('heroicon-o-megaphone')
                             ->schema([
-                                Forms\Components\Section::make('Top Bar Banner (الشريط الترويجي أعلى الهيدر)')
+                                Forms\Components\Section::make('Top Bar Banner')
                                     ->description('Configure the top announcement bar visible across the website.')
                                     ->schema([
                                         Forms\Components\Toggle::make('topbar_enabled')
@@ -178,131 +178,7 @@ class GlobalSettingResource extends Resource
                             ]),
 
                         // =========================================================================
-                        // TAB 3: FOOTER SETTINGS (إعدادات الفوتر)
-                        // =========================================================================
-                        Forms\Components\Tabs\Tab::make('Footer Settings')
-                            ->icon('heroicon-o-document-text')
-                            ->schema([
-                                Forms\Components\Section::make('Footer Brand Bio (نبذة العلامة التجارية أسفل الشعار)')
-                                    ->description('Short paragraph describing the brand under the footer logo.')
-                                    ->schema([
-                                        Forms\Components\Textarea::make('footer_about_en')
-                                            ->label('Brand Bio (English)')
-                                            ->rows(3)
-                                            ->placeholder('Grass Florist is a luxury floral atelier and gifting boutique crafting bespoke bouquets, Belgian chocolates, and living plants with same-day express delivery across Saudi Arabia.'),
-
-                                        Forms\Components\Textarea::make('footer_about_ar')
-                                            ->label('Brand Bio (Arabic)')
-                                            ->rows(3)
-                                            ->placeholder('غراس فلوريست هي بوتيك واستوديو للزهور والهدايا الفاخرة، تقدم باقات منسقة خصيصاً، وشوكولاتة بلجيكية فاخرة، ونباتات داخلية مع توصيل مبرد وسريع في نفس اليوم في المملكة العربية السعودية.'),
-                                    ])
-                                    ->columns(2),
-
-                                Forms\Components\Section::make('Footer Copyright Notice (حقوق الملكية)')
-                                    ->description('Copyright text shown at the bottom of the footer.')
-                                    ->schema([
-                                        Forms\Components\TextInput::make('footer_copyright_en')
-                                            ->label('Copyright Notice (English)')
-                                            ->placeholder('Copyright© 2026, GRASS Florist, All Rights Reserved.'),
-
-                                        Forms\Components\TextInput::make('footer_copyright_ar')
-                                            ->label('Copyright Notice (Arabic)')
-                                            ->placeholder('جميع الحقوق محفوظة © 2026، غراس فلوريست.'),
-                                    ])
-                                    ->columns(2),
-                            ]),
-
-                        // =========================================================================
-                        // TAB: TAX & VAT SETTINGS (الضريبة والقيمة المضافة)
-                        // =========================================================================
-                        Forms\Components\Tabs\Tab::make('Tax & VAT')
-                            ->icon('heroicon-o-receipt-percent')
-                            ->schema([
-                                Forms\Components\Section::make('Saudi Value Added Tax (VAT) / ضريبة القيمة المضافة')
-                                    ->description('Configure the VAT rate applied across storefront checkout, order calculations, and tax invoices.')
-                                    ->schema([
-                                        Forms\Components\TextInput::make('vat_percentage')
-                                            ->label('VAT Percentage (%) / نسبة ضريبة القيمة المضافة')
-                                            ->numeric()
-                                            ->suffix('%')
-                                            ->default(15.00)
-                                            ->minValue(0)
-                                            ->maxValue(100)
-                                            ->step(0.01)
-                                            ->required()
-                                            ->helperText('Standard Saudi Arabia VAT is 15%. This rate dynamically updates the storefront checkout label, cart breakdown, and tax invoices.'),
-
-                                        Forms\Components\TextInput::make('vat_registration_number')
-                                            ->label('ZATCA Tax Registration Number / الرقم الضريبي الموحد')
-                                            ->placeholder('300000000000003')
-                                            ->helperText('15-digit Tax Identification Number registered with ZATCA (هيئة الزكاة والضريبة والجمارك) printed on invoices.'),
-
-                                        Forms\Components\Toggle::make('is_vat_included')
-                                            ->label('Prices Include VAT / الأسعار شاملة الضريبة')
-                                            ->helperText('OFF (Default / Exclusive): 15% VAT is added on top of the subtotal at checkout. ON (Inclusive): Product prices already include VAT.')
-                                            ->default(false)
-                                            ->inline(false)
-                                            ->columnSpanFull(),
-                                    ])
-                                    ->columns(2),
-
-                                Forms\Components\Section::make('Multi-Currency & USD Exchange Rate (العملات وسعر صرف الدولار)')
-                                    ->description('Default store currency is Saudi Riyal (SAR). Customers can switch to US Dollar (USD) on the storefront header.')
-                                    ->schema([
-                                        Forms\Components\TextInput::make('sar_to_usd_rate')
-                                            ->label('SAR to USD Rate (1 SAR = ? USD)')
-                                            ->numeric()
-                                            ->step(0.0001)
-                                            ->default(0.2667)
-                                            ->required()
-                                            ->helperText('Multiplier to convert SAR to USD (e.g. 0.2667 means 100 SAR = $26.67 USD). Click button to live fetch.')
-                                            ->suffixAction(
-                                                Forms\Components\Actions\Action::make('fetchLiveRate')
-                                                    ->label('Fetch Live Rate')
-                                                    ->icon('heroicon-m-arrow-path')
-                                                    ->color('success')
-                                                    ->tooltip('Fetch live exchange rate from open exchange API')
-                                                    ->action(function (Forms\Set $set) {
-                                                        try {
-                                                            $res = \Illuminate\Support\Facades\Http::timeout(6)->get('https://open.er-api.com/v6/latest/SAR');
-                                                            if ($res->successful()) {
-                                                                $rate = $res->json()['rates']['USD'] ?? null;
-                                                                if ($rate) {
-                                                                    $rounded = round((float)$rate, 4);
-                                                                    $set('sar_to_usd_rate', $rounded);
-                                                                    $set('last_currency_rate_fetch_at', now());
-                                                                    \Filament\Notifications\Notification::make()
-                                                                        ->title('Live Currency Rate Fetched')
-                                                                        ->body("1 SAR = {$rounded} USD (1 USD ≈ " . round(1 / $rounded, 2) . " SAR)")
-                                                                        ->success()
-                                                                        ->send();
-                                                                    return;
-                                                                }
-                                                            }
-                                                            throw new \Exception('API did not return a valid USD rate');
-                                                        } catch (\Exception $e) {
-                                                            \Filament\Notifications\Notification::make()
-                                                                ->title('Failed to fetch rate')
-                                                                ->body($e->getMessage())
-                                                                ->danger()
-                                                                ->send();
-                                                        }
-                                                    })
-                                            ),
-
-                                        Forms\Components\Placeholder::make('last_currency_rate_fetch_at_display')
-                                            ->label('Last Live Rate Fetched')
-                                            ->content(function (?GlobalSetting $record) {
-                                                return $record?->last_currency_rate_fetch_at
-                                                    ? \Carbon\Carbon::parse($record->last_currency_rate_fetch_at)->diffForHumans()
-                                                    : 'Never fetched automatically (Default 0.2667)';
-                                            }),
-                                    ])
-                                    ->columns(2),
-                            ]),
-
-                        // =========================================================================
-                        // TAB 4: CONTACT & STORE INFO (بيانات التواصل والعنوان)
+                        // TAB 3: CONTACT & STORE INFO
                         // =========================================================================
                         Forms\Components\Tabs\Tab::make('Contact & Support')
                             ->icon('heroicon-o-phone')
@@ -330,7 +206,7 @@ class GlobalSettingResource extends Resource
                                     ])
                                     ->columns(2),
 
-                                Forms\Components\Section::make('Physical Boutique Address (عنوان المتجر والبوتيك)')
+                                Forms\Components\Section::make('Physical Boutique Address')
                                     ->description('Flagship showroom and delivery hub address.')
                                     ->schema([
                                         Forms\Components\Textarea::make('contact_address_en')
@@ -347,7 +223,7 @@ class GlobalSettingResource extends Resource
                             ]),
 
                         // =========================================================================
-                        // TAB 5: SOCIAL MEDIA PROFILES (وسائل التواصل الاجتماعي)
+                        // TAB 4: SOCIAL MEDIA PROFILES
                         // =========================================================================
                         Forms\Components\Tabs\Tab::make('Social Links')
                             ->icon('heroicon-o-share')
@@ -395,457 +271,51 @@ class GlobalSettingResource extends Resource
                             ]),
 
                         // =========================================================================
-                        // TAB 6: SCRIPTS & TRACKING (الأكواد والإحصائيات)
+                        // TAB 5: FOOTER & REVIEWS
                         // =========================================================================
-                        Forms\Components\Tabs\Tab::make('Scripts & Tracking')
-                            ->icon('heroicon-o-code-bracket')
+                        Forms\Components\Tabs\Tab::make('Footer & Reviews')
+                            ->icon('heroicon-o-document-text')
                             ->schema([
-                                Forms\Components\Section::make('Google Tag Manager (GTM)')
-                                    ->description('Inject Google Tag Manager code snippets directly into your storefront.')
+                                Forms\Components\Section::make('Footer Brand Bio')
+                                    ->description('Short paragraph describing the brand under the footer logo.')
                                     ->schema([
-                                        Forms\Components\Textarea::make('gtm_head_code')
-                                            ->label('GTM Head Script (<head>)')
-                                            ->placeholder("<!-- Google Tag Manager -->\n<script>(function(w,d,s,l,i){...})(window,document,'script','dataLayer','GTM-XXXXXX');</script>\n<!-- End Google Tag Manager -->")
-                                            ->rows(5)
-                                            ->columnSpanFull(),
-
-                                        Forms\Components\Textarea::make('gtm_body_code')
-                                            ->label('GTM Body NoScript (<body>)')
-                                            ->placeholder("<!-- Google Tag Manager (noscript) -->\n<noscript><iframe src=\"https://www.googletagmanager.com/ns.html?id=GTM-XXXXXX\" height=\"0\" width=\"0\" style=\"display:none;visibility:hidden\"></iframe></noscript>\n<!-- End Google Tag Manager (noscript) -->")
+                                        Forms\Components\Textarea::make('footer_about_en')
+                                            ->label('Brand Bio (English)')
                                             ->rows(3)
-                                            ->columnSpanFull(),
-                                    ]),
+                                            ->placeholder('Grass Florist is a luxury floral atelier and gifting boutique crafting bespoke bouquets, Belgian chocolates, and living plants with same-day express delivery across Saudi Arabia.'),
 
-                                Forms\Components\Section::make('Google Analytics & Pixels')
-                                    ->description('Configure GA4 Measurement ID and tracking pixels.')
-                                    ->schema([
-                                        Forms\Components\TextInput::make('ga_measurement_id')
-                                            ->label('GA4 Measurement ID')
-                                            ->placeholder('G-XXXXXXXXXX'),
-
-                                        Forms\Components\TextInput::make('meta_pixel_id')
-                                            ->label('Meta / Facebook Pixel ID')
-                                            ->placeholder('123456789012345'),
-
-                                        Forms\Components\TextInput::make('tiktok_pixel_id')
-                                            ->label('TikTok Pixel ID')
-                                            ->placeholder('CXXXXXXXXXXXXX'),
-
-                                        Forms\Components\TextInput::make('snapchat_pixel_id')
-                                            ->label('Snapchat Pixel ID')
-                                            ->placeholder('xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'),
+                                        Forms\Components\Textarea::make('footer_about_ar')
+                                            ->label('Brand Bio (Arabic)')
+                                            ->rows(3)
+                                            ->placeholder('غراس فلوريست هي بوتيك واستوديو للزهور والهدايا الفاخرة، تقدم باقات منسقة خصيصاً، وشوكولاتة بلجيكية فاخرة، ونباتات داخلية مع توصيل مبرد وسريع في نفس اليوم في المملكة العربية السعودية.'),
                                     ])
                                     ->columns(2),
 
-                                Forms\Components\Section::make('Custom Scripts (Head & Footer)')
-                                    ->description('Custom CSS, meta tags, and third-party widgets.')
+                                Forms\Components\Section::make('Footer Copyright Notice')
+                                    ->description('Copyright text shown at the bottom of the footer.')
                                     ->schema([
-                                        Forms\Components\Textarea::make('custom_head_scripts')
-                                            ->label('Custom <head> Scripts')
-                                            ->rows(4)
-                                            ->columnSpanFull(),
+                                        Forms\Components\TextInput::make('footer_copyright_en')
+                                            ->label('Copyright Notice (English)')
+                                            ->placeholder('Copyright© 2026, GRASS Florist, All Rights Reserved.'),
 
-                                        Forms\Components\Textarea::make('custom_footer_scripts')
-                                            ->label('Custom </body> Footer Scripts')
-                                            ->rows(4)
-                                            ->columnSpanFull(),
-                                    ]),
-                            ]),
+                                        Forms\Components\TextInput::make('footer_copyright_ar')
+                                            ->label('Copyright Notice (Arabic)')
+                                            ->placeholder('جميع الحقوق محفوظة © 2026، غراس فلوريست.'),
+                                    ])
+                                    ->columns(2),
 
-                        // =========================================================================
-                        // TAB 7: SEO, SITEMAP & AI DISCOVERY (السيو ومحركات الذكاء الاصطناعي)
-                        // =========================================================================
-                        Forms\Components\Tabs\Tab::make('SEO & AI Discovery')
-                            ->icon('heroicon-o-globe-alt')
-                            ->schema([
-                                // 1. SITEMAP.XML MANAGEMENT
-                                Forms\Components\Section::make('Sitemap.xml Management (إدارة وتخصيص خريطة الموقع)')
-                                    ->description('Control which resources are indexed in sitemap.xml, active/deactive status, and custom exclusions.')
-                                    ->schema([
-                                        Forms\Components\Toggle::make('sitemap_enabled')
-                                            ->label('Enable Dynamic Sitemap (sitemap.xml)')
-                                            ->helperText('Turn on to generate and serve dynamic sitemap.xml to Google and search engines.')
-                                            ->default(true)
-                                            ->columnSpanFull(),
-
-                                        Forms\Components\Section::make('Included Resources (المحتوى المتضمن في الخريطة)')
-                                            ->schema([
-                                                Forms\Components\Toggle::make('sitemap_include_products')
-                                                    ->label('Include Products')
-                                                    ->helperText('Index all active products')
-                                                    ->default(true),
-
-                                                Forms\Components\Toggle::make('sitemap_include_categories')
-                                                    ->label('Include Categories')
-                                                    ->helperText('Index categories in AR & EN')
-                                                    ->default(true),
-
-                                                Forms\Components\Toggle::make('sitemap_include_static_pages')
-                                                    ->label('Include Static Pages')
-                                                    ->helperText('Index Home, About, Contact, Events')
-                                                    ->default(true),
-
-                                                Forms\Components\Toggle::make('sitemap_include_blog')
-                                                    ->label('Include Blog Posts')
-                                                    ->helperText('Index floral & gift articles')
-                                                    ->default(true),
-                                            ])
-                                            ->columns(4)
-                                            ->columnSpanFull(),
-
-                                        Forms\Components\Textarea::make('sitemap_excluded_paths')
-                                            ->label('Excluded Paths & Routes (المسارات المستثناة)')
-                                            ->placeholder("/cart\n/checkout\n/en/cart\n/en/checkout\n/account\n/api/*\n/admin/*")
-                                            ->rows(4)
-                                            ->helperText('Enter one URL path per line to exclude from sitemap indexing.')
-                                            ->extraInputAttributes(['class' => 'font-mono text-xs'])
-                                            ->columnSpanFull(),
-
-                                        Forms\Components\Placeholder::make('sitemap_live_link')
-                                            ->label('Live Sitemap Preview')
-                                            ->content(function () {
-                                                $localUrl = 'http://localhost:3000/sitemap.xml';
-                                                return new \Illuminate\Support\HtmlString("
-                                                    <a href='{$localUrl}' target='_blank' class='inline-flex items-center text-primary-600 dark:text-primary-400 hover:underline font-mono text-xs bg-gray-100 dark:bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700'>
-                                                        <span>Open Live {$localUrl}</span>
-                                                        <svg class='w-3.5 h-3.5 ml-1.5 inline' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14'/></svg>
-                                                    </a>
-                                                ");
-                                            })
-                                            ->columnSpanFull(),
-                                    ]),
-
-                                // 2. ROBOTS.TXT EDITING
-                                Forms\Components\Section::make('Robots.txt Editor (محرر ملف الروبوتات robots.txt)')
-                                    ->description('Directly edit crawlers rules, allow/disallow paths, and sitemap directives.')
-                                    ->schema([
-                                        Forms\Components\Textarea::make('robots_custom_content')
-                                            ->label('Custom robots.txt Rules & Directives')
-                                            ->placeholder("User-agent: *\nAllow: /\nDisallow: /cart\nDisallow: /checkout\n\nSitemap: https://grassflorist.com/sitemap.xml")
-                                            ->rows(8)
-                                            ->helperText('Define crawler rules for Googlebot, Bingbot, and AI agents. Customize freely.')
-                                            ->extraInputAttributes(['class' => 'font-mono text-xs'])
-                                            ->columnSpanFull(),
-
-                                        Forms\Components\Placeholder::make('robots_live_link')
-                                            ->label('Live robots.txt Preview')
-                                            ->content(function () {
-                                                $localUrl = 'http://localhost:3000/robots.txt';
-                                                return new \Illuminate\Support\HtmlString("
-                                                    <a href='{$localUrl}' target='_blank' class='inline-flex items-center text-primary-600 dark:text-primary-400 hover:underline font-mono text-xs bg-gray-100 dark:bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700'>
-                                                        <span>Open Live {$localUrl}</span>
-                                                        <svg class='w-3.5 h-3.5 ml-1.5 inline' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14'/></svg>
-                                                    </a>
-                                                ");
-                                            })
-                                            ->columnSpanFull(),
-                                    ]),
-
-                                // 3. LLMS.TXT & AI DISCOVERY EDITING (FULL CONTENT EDITOR)
-                                Forms\Components\Section::make('AI Discovery & LLMs.txt Full Editor (محرر ملف نماذج الذكاء الاصطناعي llms.txt الكامل)')
-                                    ->description('Edit the full Markdown content served to AI answer engines (ChatGPT, Claude, Perplexity) in English and Arabic.')
-                                    ->schema([
-                                        Forms\Components\Toggle::make('llms_enabled')
-                                            ->label('Enable LLMs.txt AI Knowledge Feed (/llms.txt)')
-                                            ->helperText('Turn on to serve optimized Markdown context to LLM crawlers like GPTBot and ClaudeBot.')
-                                            ->default(true)
-                                            ->columnSpanFull(),
-
-                                        Forms\Components\Textarea::make('llms_custom_content')
-                                            ->label('Full llms.txt Content (محتوى ملف llms.txt بالكامل)')
-                                            ->placeholder("# Grass Florist (غراس فلوريست) — Knowledge Specification for LLMs\n\n## 1. Brand Overview...\n## 2. Arabic Overview...")
-                                            ->rows(16)
-                                            ->helperText('Complete Markdown content for /llms.txt. Edit English, Arabic, services, and directives in one place.')
-                                            ->extraInputAttributes(['class' => 'font-mono text-xs leading-relaxed'])
-                                            ->columnSpanFull(),
-
-                                        Forms\Components\Placeholder::make('llms_live_link')
-                                            ->label('Live llms.txt Preview')
-                                            ->content(function () {
-                                                $localUrl = 'http://localhost:3000/llms.txt';
-                                                return new \Illuminate\Support\HtmlString("
-                                                    <a href='{$localUrl}' target='_blank' class='inline-flex items-center text-primary-600 dark:text-primary-400 hover:underline font-mono text-xs bg-gray-100 dark:bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700'>
-                                                        <span>Open Live {$localUrl}</span>
-                                                        <svg class='w-3.5 h-3.5 ml-1.5 inline' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14'/></svg>
-                                                    </a>
-                                                ");
-                                            })
-                                            ->columnSpanFull(),
-                                    ]),
-                            ]),
-
-                        // =========================================================================
-                        // TAB 8: GOOGLE BUSINESS & REVIEWS (تقييمات وخرائط جوجل)
-                        // =========================================================================
-                        Forms\Components\Tabs\Tab::make('Google Reviews')
-                            ->icon('heroicon-o-star')
-                            ->schema([
-                                Forms\Components\Section::make('Google Business Profile & Direct Review Link')
+                                Forms\Components\Section::make('Google Business Profile & Review Link')
                                     ->description('Configure your Google Business link and direct "Write a Review" URL for customer redirects.')
                                     ->schema([
                                         Forms\Components\TextInput::make('google_business_url')
-                                            ->label('Google Business Profile URL (رابط الملف التجاري)')
+                                            ->label('Google Business Profile URL')
                                             ->placeholder('https://share.google/z7BTvYwJ4iPqWjQTK')
-                                            ->helperText('Your official Google Maps / Business Profile page URL. Default: https://share.google/z7BTvYwJ4iPqWjQTK')
-                                            ->columnSpanFull(),
+                                            ->helperText('Your official Google Maps / Business Profile page URL.'),
 
                                         Forms\Components\TextInput::make('google_write_review_url')
-                                            ->label('Direct "Write a Review" URL (رابط كتابة التقييم المباشر)')
+                                            ->label('Direct "Write a Review" URL')
                                             ->placeholder('https://search.google.com/local/writereview?placeid=... or https://g.page/r/.../review')
-                                            ->helperText('Direct URL that opens Google review popup when customer clicks "Write a Review". If blank, it uses Business Profile URL.')
-                                            ->columnSpanFull(),
-                                    ]),
-                            ]),
-
-                        // =========================================================================
-                        // TAB 9: MSEGAT SMS GATEWAY (بوابة الرسائل النصية مسجات)
-                        // =========================================================================
-                        Forms\Components\Tabs\Tab::make('Msegat SMS Gateway')
-                            ->icon('heroicon-o-chat-bubble-left-right')
-                            ->schema([
-                                Forms\Components\Section::make('Msegat Integration (الربط مع بوابة مسجات)')
-                                    ->description('Configure Msegat.com Saudi SMS gateway credentials to send automated order, delivery, and customer SMS.')
-                                    ->headerActions([
-                                        Forms\Components\Actions\Action::make('check_balance')
-                                            ->label('Check Msegat Balance')
-                                            ->icon('heroicon-o-currency-dollar')
-                                            ->color('info')
-                                            ->action(function (\App\Services\Notifications\MsegatSmsService $smsService) {
-                                                $res = $smsService->checkCredits();
-                                                if ($res['success']) {
-                                                    \Filament\Notifications\Notification::make()
-                                                        ->title('Msegat Balance Active')
-                                                        ->body($res['message'])
-                                                        ->success()
-                                                        ->send();
-                                                } else {
-                                                    \Filament\Notifications\Notification::make()
-                                                        ->title('Msegat Balance Check Failed')
-                                                        ->body($res['message'])
-                                                        ->danger()
-                                                        ->send();
-                                                }
-                                            }),
-                                        Forms\Components\Actions\Action::make('test_sms')
-                                            ->label('Send Test SMS')
-                                            ->icon('heroicon-o-paper-airplane')
-                                            ->color('success')
-                                            ->form([
-                                                Forms\Components\TextInput::make('test_mobile')
-                                                    ->label('Recipient Mobile Number')
-                                                    ->placeholder('0501234567 or 966501234567')
-                                                    ->required(),
-                                                Forms\Components\TextInput::make('test_msg')
-                                                    ->label('Message Text')
-                                                    ->default('تجربة إرسال رسالة نصية من متجر غراس فلوريست عبر بوابة مسجات - Grass Florist Test SMS')
-                                                    ->required(),
-                                            ])
-                                            ->action(function (array $data, \App\Services\Notifications\MsegatSmsService $smsService) {
-                                                $res = $smsService->send($data['test_mobile'], $data['test_msg'], 'test_msegat_connection');
-                                                if ($res['success']) {
-                                                    \Filament\Notifications\Notification::make()
-                                                        ->title('Test SMS Delivered!')
-                                                        ->body("Message sent successfully to {$data['test_mobile']}")
-                                                        ->success()
-                                                        ->send();
-                                                } else {
-                                                    \Filament\Notifications\Notification::make()
-                                                        ->title('Test SMS Failed')
-                                                        ->body($res['message'])
-                                                        ->danger()
-                                                        ->persistent()
-                                                        ->send();
-                                                }
-                                            }),
-                                    ])
-                                    ->schema([
-                                        Forms\Components\Toggle::make('msegat_sms_enabled')
-                                            ->label('Enable Msegat SMS Gateway (تفعيل إرسال الرسائل عبر مسجات)')
-                                            ->helperText('Turn on to send live SMS for orders, inquiries, and delivery updates.')
-                                            ->default(false)
-                                            ->columnSpanFull(),
-
-                                        Forms\Components\TextInput::make('msegat_username')
-                                            ->label('Msegat Account Username (اسم المستخدم)')
-                                            ->placeholder('e.g. grassflorist')
-                                            ->helperText('Your registered username on msegat.com'),
-
-                                        Forms\Components\TextInput::make('msegat_api_key')
-                                            ->label('Msegat API Key (مفتاح الربط البرمجي)')
-                                            ->password()
-                                            ->revealable()
-                                            ->placeholder('e.g. 7f89cxxxxxxxxxxxxxx')
-                                            ->helperText('Your private API Key generated from Msegat account settings'),
-
-                                        Forms\Components\TextInput::make('msegat_user_sender')
-                                            ->label('Approved Sender Name (اسم المرسل المعتمد)')
-                                            ->placeholder('Grass')
-                                            ->helperText('Registered Sender ID approved in Msegat (English letters/numbers only)'),
-                                    ])
-                                    ->columns(2),
-                            ]),
-
-                        // =========================================================================
-                        // TAB 7: EMAIL TEMPLATES BRANDING (تخصيص وهوية قوالب البريد)
-                        // =========================================================================
-                        Forms\Components\Tabs\Tab::make('Email Templates Branding')
-                            ->icon('heroicon-o-envelope')
-                            ->schema([
-                                Forms\Components\Section::make('Email Header & Logo (شعار وترويسة البريد)')
-                                    ->description('Customize the visual appearance of all transactional and notification emails.')
-                                    ->schema([
-                                        Forms\Components\FileUpload::make('email_logo')
-                                            ->label('Email Header Logo File (رفع ملف الشعار)')
-                                            ->image()
-                                            ->imageEditor()
-                                            ->disk('public')
-                                            ->directory('settings/emails')
-                                            ->visibility('public')
-                                            ->helperText('Upload image file (PNG, SVG, WEBP). Used if direct URL is empty.')
-                                            ->columnSpan(1),
-
-                                        Forms\Components\TextInput::make('email_custom_logo_url')
-                                            ->label('Or Enter Logo Direct URL (أو رابط الشعار المباشر / موقع خارجي)')
-                                            ->placeholder('https://example.com/images/logo.png')
-                                            ->url()
-                                            ->helperText('Enter logo URL from another website, CDN or external host. If provided, this URL will be used in emails.')
-                                            ->columnSpan(1),
-
-                                        Forms\Components\TextInput::make('email_title_en')
-                                            ->label('Brand Title (English)')
-                                            ->default('Grass Florist')
-                                            ->placeholder('Grass Florist'),
-
-                                        Forms\Components\TextInput::make('email_title_ar')
-                                            ->label('Brand Title (Arabic)')
-                                            ->default('غراس فلوريست')
-                                            ->placeholder('غراس فلوريست'),
-
-                                        Forms\Components\TextInput::make('email_subtitle_en')
-                                            ->label('Brand Subtitle (English)')
-                                            ->default('Luxury Floral Atelier & Curated Gifting')
-                                            ->placeholder('Luxury Floral Atelier & Curated Gifting'),
-
-                                        Forms\Components\TextInput::make('email_subtitle_ar')
-                                            ->label('Brand Subtitle (Arabic)')
-                                            ->default('متجر الزهور والهدايا الفاخرة')
-                                            ->placeholder('متجر الزهور والهدايا الفاخرة'),
-                                    ])
-                                    ->columns(2),
-
-                                Forms\Components\Section::make('Color Palette & Theme (ألوان وهوية القالب)')
-                                    ->description('Select the colors for email header, backgrounds, and action buttons.')
-                                    ->schema([
-                                        Forms\Components\ColorPicker::make('email_header_bg_color')
-                                            ->label('Header Background Color (خلفية الترويسة)')
-                                            ->default('#2D3F33')
-                                            ->helperText('Default: #2D3F33 (Luxury Forest Green)'),
-
-                                        Forms\Components\ColorPicker::make('email_body_bg_color')
-                                            ->label('Email Page Background (خلفية الصفحة)')
-                                            ->default('#FAF8F5')
-                                            ->helperText('Default: #FAF8F5 (Soft Ivory)'),
-
-                                        Forms\Components\ColorPicker::make('email_card_bg_color')
-                                            ->label('Card Background Color (خلفية البطاقات)')
-                                            ->default('#FAF8F5')
-                                            ->helperText('Default: #FAF8F5 (Warm Cream)'),
-
-                                        Forms\Components\ColorPicker::make('email_accent_color')
-                                            ->label('Button & Accent Color (لون الأزرار والتمييز)')
-                                            ->default('#8fae2a')
-                                            ->helperText('Default: #8fae2a (Olive Leaf Green)'),
-                                    ])
-                                    ->columns(2),
-
-                                Forms\Components\Section::make('Email Footer Details (بيانات تذييل البريد)')
-                                    ->description('Contact info, legal store name, and copyright notice displayed in the email footer.')
-                                    ->schema([
-                                        Forms\Components\TextInput::make('email_footer_name_en')
-                                            ->label('Footer Store Legal Name (English)')
-                                            ->default('Grass Florist Atelier — Saudi Arabia'),
-
-                                        Forms\Components\TextInput::make('email_footer_name_ar')
-                                            ->label('Footer Store Legal Name (Arabic)')
-                                            ->default('مؤسسة غراس السعودية للزهور والهدايا'),
-
-                                        Forms\Components\TextInput::make('email_footer_address_en')
-                                            ->label('Footer Address (English)')
-                                            ->default('Jeddah, Kingdom of Saudi Arabia'),
-
-                                        Forms\Components\TextInput::make('email_footer_address_ar')
-                                            ->label('Footer Address (Arabic)')
-                                            ->default('جدة، المملكة العربية السعودية'),
-
-                                        Forms\Components\TextInput::make('email_footer_phone')
-                                            ->label('Contact Phone (رقم التواصل)')
-                                            ->default('+966 50 000 0000'),
-
-                                        Forms\Components\TextInput::make('email_footer_email')
-                                            ->label('Contact Email (البريد الإلكتروني)')
-                                            ->default('info@grassflorist.com'),
-
-                                        Forms\Components\TextInput::make('email_footer_copyright_en')
-                                            ->label('Custom Copyright (English)')
-                                            ->placeholder('e.g. All rights reserved.'),
-
-                                        Forms\Components\TextInput::make('email_footer_copyright_ar')
-                                            ->label('Custom Copyright (Arabic)')
-                                            ->placeholder('مثال: جميع الحقوق محفوظة.'),
-                                    ])
-                                    ->columns(2),
-                            ]),
-
-                        // =========================================================================
-                        // TAB 7: ODOO ERP INTEGRATION (الربط مع نظام أودو المحاسبي)
-                        // =========================================================================
-                        Forms\Components\Tabs\Tab::make('Odoo ERP Integration')
-                            ->icon('heroicon-o-arrow-path-rounded-square')
-                            ->schema([
-                                Forms\Components\Section::make('Odoo Connection & API Credentials (بيانات الربط مع أودو)')
-                                    ->description('Configure Odoo ERP order synchronization endpoint and authentication token.')
-                                    ->schema([
-                                        Forms\Components\Toggle::make('odoo_enabled')
-                                            ->label('Enable Odoo ERP Sync (تفعيل المزامنة مع أودو)')
-                                            ->helperText('When enabled, paid orders will be synchronized with Odoo ERP.')
-                                            ->default(true),
-
-                                        Forms\Components\Toggle::make('odoo_auto_sync_on_paid')
-                                            ->label('Auto-Sync on Payment Capture (مزامنة تلقائية عند الدفع)')
-                                            ->helperText('Trigger sync immediately when an order is paid or marked processing.')
-                                            ->default(true),
-
-                                        Forms\Components\TextInput::make('odoo_api_url')
-                                            ->label('Odoo API Endpoint URL (رابط API أودو)')
-                                            ->default('https://odoo.grassflorist.com/website/api/order/upsert')
-                                            ->url()
-                                            ->required()
-                                            ->columnSpanFull(),
-
-                                        Forms\Components\TextInput::make('odoo_api_token')
-                                            ->label('Odoo Bearer Token (رمز التوثيق)')
-                                            ->password()
-                                            ->revealable()
-                                            ->columnSpanFull()
-                                            ->helperText('Used in Authorization: Bearer <token> HTTP header.'),
-                                    ])
-                                    ->columns(2),
-
-                                Forms\Components\Section::make('Testing & Developer Bypass Rules (قواعد استثناء حسابات الاختبار والتطوير)')
-                                    ->description('Define customer accounts, emails, or email domains that should NEVER be synced to Odoo.')
-                                    ->schema([
-                                        Forms\Components\Textarea::make('odoo_bypass_domains')
-                                            ->label('Bypass Email Domains (استثناء نطاقات الإيميل)')
-                                            ->placeholder("techbeeps.com\ntechbeeps.co.in")
-                                            ->helperText('Orders from these email domains will be skipped. Enter one per line or comma-separated.')
-                                            ->rows(3),
-
-                                        Forms\Components\Textarea::make('odoo_bypass_emails')
-                                            ->label('Bypass Specific Emails (استثناء إيميلات محددة)')
-                                            ->placeholder("gurjeet@techbeeps.com\ntest@example.com")
-                                            ->helperText('Orders with these exact emails will be skipped. Enter one per line or comma-separated.')
-                                            ->rows(3),
-
+                                            ->helperText('Direct URL that opens Google review popup when customer clicks "Write a Review".'),
                                     ])
                                     ->columns(2),
                             ]),

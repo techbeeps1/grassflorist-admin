@@ -122,7 +122,12 @@ class CouponResource extends Resource
                             ->label('First Order Only (New Customers Only)')
                             ->helperText('Restrict this coupon strictly to brand-new customers who have never placed an order.')
                             ->default(false),
-                    ])->columns(3),
+
+                        Forms\Components\Toggle::make('is_subscriber_only')
+                            ->label('Apply Only for Subscribers (Newsletter Only)')
+                            ->helperText('Restrict this coupon strictly to verified newsletter subscribers.')
+                            ->default(false),
+                    ])->columns(2),
 
                 Forms\Components\Section::make('Cart Value & Dates')
                     ->schema([
@@ -192,6 +197,10 @@ class CouponResource extends Resource
 
                 Tables\Columns\IconColumn::make('is_first_order_only')
                     ->label('1st Order Only')
+                    ->boolean(),
+
+                Tables\Columns\IconColumn::make('is_subscriber_only')
+                    ->label('Subscribers Only')
                     ->boolean(),
 
                 Tables\Columns\TextColumn::make('min_cart_amount')

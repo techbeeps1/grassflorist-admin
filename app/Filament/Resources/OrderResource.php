@@ -328,23 +328,16 @@ class OrderResource extends Resource
                                     ->schema([
                                         Grid::make(2)
                                             ->schema([
-                                                Placeholder::make('payment_method')
-                                                    ->label('Payment Method')
+                                                Placeholder::make('payment_method_display')
+                                                    ->label('Payment Method & Channel')
                                                     ->content(function ($record) {
-                                                        $methods = [
-                                                            "applepay" => "Apple Pay",
-                                                            "mada" => "Mada Debit Card",
-                                                            "hyperpay" => "HyperPay Gateway",
-                                                            "tabby" => "Tabby (Buy Now Pay Later)",
-                                                            "tamara" => "Tamara (Split in 3/4)",
-                                                            "stcpay" => "STC Pay",
-                                                            "cod" => "Cash on Delivery",
-                                                            "card" => "Credit Card",
-                                                            "razorpay" => "Razorpay",
-                                                            "paypal" => "PayPal",
-                                                        ];
-                                                        $raw = strtolower((string)($record?->payment_method ?? ''));
-                                                        return $methods[$raw] ?? ($record?->payment_method ?? 'N/A');
+                                                        if (!$record) return 'N/A';
+                                                        $details = $record->getPaymentDetails();
+                                                        $output = "<span class='font-bold text-sm text-gray-900 dark:text-gray-100'>{$details['title']}</span>";
+                                                        if ($details['gateway'] && strtolower($details['gateway']) !== strtolower($details['title'])) {
+                                                            $output .= " <span class='text-xs text-gray-500 font-medium'>(via {$details['gateway']})</span>";
+                                                        }
+                                                        return new \Illuminate\Support\HtmlString($output);
                                                     }),
 
                                                 Select::make('payment_status')
@@ -358,6 +351,35 @@ class OrderResource extends Resource
                                                     ])
                                                     ->required()
                                                     ->native(true),
+
+                                                Placeholder::make('card_channel_info')
+                                                    ->label('Card / Channel Details')
+                                                    ->content(function ($record) {
+                                                        if (!$record) return '-';
+                                                        $details = $record->getPaymentDetails();
+                                                        if (!empty($details['card_last4'])) {
+                                                            $cardInfo = "•••• •••• •••• {$details['card_last4']}";
+                                                            if (!empty($details['card_type'])) {
+                                                                $cardInfo .= " [{$details['card_type']}]";
+                                                            }
+                                                            if (!empty($details['card_bank'])) {
+                                                                $cardInfo .= " | Bank: {$details['card_bank']}";
+                                                            }
+                                                            if (!empty($details['card_holder'])) {
+                                                                $cardInfo .= " | Holder: {$details['card_holder']}";
+                                                            }
+                                                            return $cardInfo;
+                                                        }
+                                                        return match(strtolower($details['method_code'])) {
+                                                            'apple_pay' => 'Apple Pay Digital Wallet',
+                                                            'stc_pay' => 'STC Pay Mobile Wallet',
+                                                            'tabby' => 'Tabby Pay in 4 / Installments',
+                                                            'tamara' => 'Tamara Split in 3-4 Payments',
+                                                            'paypal' => 'PayPal Verified Account',
+                                                            'cod' => 'Cash On Delivery (Cash / POS on doorstep)',
+                                                            default => 'Direct Gateway Transaction',
+                                                        };
+                                                    }),
 
                                                 Placeholder::make('payment_info_summary')
                                                     ->label('Payment Timestamp & IP')
@@ -1065,12 +1087,38 @@ class OrderResource extends Resource
                 
                 Tables\Columns\TextColumn::make('payment_method')
                     ->label('Payment')
+                    ->getStateUsing(function ($record) {
+                        return $record->getPaymentDetails()['title'];
+                    })
+                    ->description(function ($record) {
+                        $details = $record->getPaymentDetails();
+                        $parts = [];
+                        if (!empty($details['card_last4'])) {
+                            $parts[] = '•••• ' . $details['card_last4'];
+                        }
+                        if (!empty($details['gateway']) && !in_array(strtolower($details['gateway']), ['cod', strtolower($details['title'])])) {
+                            $parts[] = $details['gateway'];
+                        }
+                        return !empty($parts) ? implode(' • ', $parts) : null;
+                    })
                     ->badge()
-                    ->colors([
-                        'success' => 'cod',
-                        'primary' => 'card',
-                        'warning' => 'razorpay',
-                    ]),
+                    ->color(fn ($record) => $record->getPaymentDetails()['badge_color'])
+                    ->icon(fn ($record) => $record->getPaymentDetails()['icon'])
+                    ->tooltip(function ($record) {
+                        $details = $record->getPaymentDetails();
+                        $tip = "Method: {$details['title']}";
+                        if ($details['gateway']) $tip .= " via {$details['gateway']}";
+                        if ($details['card_last4']) $tip .= " (Card ending in {$details['card_last4']}";
+                        if ($details['card_bank']) $tip .= ", {$details['card_bank']}";
+                        if ($details['card_last4']) $tip .= ")";
+                        return $tip;
+                    })
+                    ->searchable(query: function ($query, $search) {
+                        return $query->where(function ($q) use ($search) {
+                            $q->where('payment_method', 'like', "%{$search}%")
+                              ->orWhere('meta_data', 'like', "%{$search}%");
+                        });
+                    }),
                 
                 // Tables\Columns\TextColumn::make('payment_status')
                 //     ->label('Payment Status')

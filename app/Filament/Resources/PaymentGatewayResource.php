@@ -15,7 +15,7 @@ class PaymentGatewayResource extends Resource
     protected static ?string $model = PaymentGateway::class;
     protected static ?string $navigationIcon = 'heroicon-o-credit-card';
     protected static ?string $navigationGroup = 'Settings';
-    protected static ?int $navigationSort = 2;
+    protected static ?int $navigationSort = 7;
     protected static ?string $navigationLabel = 'Payment Gateways';
     protected static ?string $modelLabel = 'Payment Gateway';
 

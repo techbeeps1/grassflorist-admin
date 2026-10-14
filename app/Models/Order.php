@@ -130,6 +130,132 @@ class Order extends Model
     {
         return in_array(strtolower((string)$this->payment_status), ['paid', 'completed']);
     }
+
+    /**
+     * Resolve comprehensive payment method information (Gateway, Specific Brand, Card info).
+     */
+    public function getPaymentDetails(): array
+    {
+        $rawMethod = strtolower(trim((string)($this->payment_method ?? '')));
+        $meta = is_array($this->meta_data) ? $this->meta_data : [];
+
+        $brand = $meta['payment_brand'] ?? $meta['brand'] ?? null;
+        $gateway = $meta['payment_gateway'] ?? null;
+        $card = $meta['payment_card'] ?? null;
+
+        // If not in meta, try to inspect latest successful PaymentLog
+        if (!$brand || !$card) {
+            $log = \App\Models\PaymentLog::where('order_id', $this->id)
+                ->where('status', 'success')
+                ->latest('id')
+                ->first();
+
+            if ($log && is_array($log->payload)) {
+                $payload = $log->payload;
+                if (!$brand) {
+                    $brand = $payload['paymentBrand'] ?? $payload['brand'] ?? null;
+                }
+                if (!$gateway && !empty($log->gateway)) {
+                    $gateway = $log->gateway;
+                }
+                if (!$card && !empty($payload['card'])) {
+                    $card = [
+                        'last4' => $payload['card']['last4Digits'] ?? null,
+                        'holder' => $payload['card']['holder'] ?? null,
+                        'bank' => $payload['card']['issuer']['bank'] ?? null,
+                        'type' => $payload['card']['type'] ?? null,
+                    ];
+                }
+            }
+        }
+
+        // Determine Brand Label & Normalized Method
+        $normalized = strtolower(trim((string)($brand ?: $rawMethod)));
+
+        if (str_contains($normalized, 'mada')) {
+            $title = 'Mada Card';
+            $badgeColor = 'success';
+            $icon = 'heroicon-o-credit-card';
+            $methodCode = 'mada';
+        } elseif (str_contains($normalized, 'apple') || $normalized === 'applepay') {
+            $title = 'Apple Pay';
+            $badgeColor = 'gray';
+            $icon = 'heroicon-o-device-phone-mobile';
+            $methodCode = 'apple_pay';
+        } elseif (str_contains($normalized, 'stc') || $normalized === 'stcpay') {
+            $title = 'STC Pay';
+            $badgeColor = 'purple';
+            $icon = 'heroicon-o-device-phone-mobile';
+            $methodCode = 'stc_pay';
+        } elseif (str_contains($normalized, 'visa')) {
+            $title = 'Visa Card';
+            $badgeColor = 'info';
+            $icon = 'heroicon-o-credit-card';
+            $methodCode = 'visa';
+        } elseif (str_contains($normalized, 'master')) {
+            $title = 'Mastercard';
+            $badgeColor = 'warning';
+            $icon = 'heroicon-o-credit-card';
+            $methodCode = 'mastercard';
+        } elseif (str_contains($normalized, 'amex')) {
+            $title = 'American Express';
+            $badgeColor = 'info';
+            $icon = 'heroicon-o-credit-card';
+            $methodCode = 'amex';
+        } elseif (str_contains($normalized, 'tabby')) {
+            $title = 'Tabby';
+            $badgeColor = 'emerald';
+            $icon = 'heroicon-o-calendar-days';
+            $methodCode = 'tabby';
+        } elseif (str_contains($normalized, 'tamara')) {
+            $title = 'Tamara';
+            $badgeColor = 'warning';
+            $icon = 'heroicon-o-calendar-days';
+            $methodCode = 'tamara';
+        } elseif (str_contains($normalized, 'paypal') || str_contains($normalized, 'ppcp')) {
+            $title = 'PayPal';
+            $badgeColor = 'info';
+            $icon = 'heroicon-o-globe-alt';
+            $methodCode = 'paypal';
+        } elseif (str_contains($normalized, 'cod') || str_contains($normalized, 'cash')) {
+            $title = 'Cash on Delivery';
+            $badgeColor = 'warning';
+            $icon = 'heroicon-o-banknotes';
+            $methodCode = 'cod';
+        } elseif (str_contains($normalized, 'razorpay')) {
+            $title = 'Razorpay';
+            $badgeColor = 'info';
+            $icon = 'heroicon-o-credit-card';
+            $methodCode = 'razorpay';
+        } elseif (str_contains($normalized, 'card')) {
+            $title = 'Credit Card';
+            $badgeColor = 'info';
+            $icon = 'heroicon-o-credit-card';
+            $methodCode = 'card';
+        } else {
+            $title = ucfirst($rawMethod ?: 'N/A');
+            $badgeColor = 'gray';
+            $icon = 'heroicon-o-credit-card';
+            $methodCode = $rawMethod ?: 'unknown';
+        }
+
+        return [
+            'method_code' => $methodCode,
+            'title' => $title,
+            'badge_color' => $badgeColor,
+            'icon' => $icon,
+            'gateway' => $gateway ? ucfirst($gateway) : null,
+            'card_last4' => $card['last4'] ?? null,
+            'card_holder' => $card['holder'] ?? null,
+            'card_bank' => $card['bank'] ?? null,
+            'card_type' => $card['type'] ?? null,
+        ];
+    }
+
+    public function getPaymentMethodTitleAttribute(): string
+    {
+        return $this->getPaymentDetails()['title'];
+    }
     
 
     public function customer(): BelongsTo

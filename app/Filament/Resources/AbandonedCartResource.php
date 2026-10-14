@@ -159,9 +159,9 @@ class AbandonedCartResource extends Resource
                     })
                     ->description(function (Cart $record): string {
                         $titles = $record->items->take(2)->map(function ($item) {
-                            $name = $item->product?->name ?? 'Product';
+                            $name = format_translatable($item->product?->name, 'en') ?: ($item->product?->sku ?? 'Product');
                             $qty = (int) $item->quantity;
-                            $shortName = strlen($name) > 30 ? substr($name, 0, 27) . '...' : $name;
+                            $shortName = mb_strlen($name) > 30 ? mb_substr($name, 0, 27) . '...' : $name;
                             return $qty > 1 ? "{$shortName} (x{$qty})" : $shortName;
                         })->toArray();
 
@@ -436,17 +436,18 @@ class AbandonedCartResource extends Resource
                                 }),
 
                             Forms\Components\Placeholder::make('items_breakdown')
-                                ->label('Books in Bag')
+                                ->label('Products in Cart')
                                 ->content(function (Cart $record): HtmlString {
                                     $html = "<div class='overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700'>";
                                     $html .= "<table class='w-full text-left text-sm'>";
                                     $html .= "<thead class='bg-gray-100 dark:bg-gray-800 text-xs font-semibold text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700'>";
-                                    $html .= "<tr><th class='p-3'>Book Title</th><th class='p-3 text-center'>Qty</th><th class='p-3 text-right'>Unit Price</th><th class='p-3 text-right'>Subtotal</th></tr>";
+                                    $html .= "<tr><th class='p-3'>Product Name</th><th class='p-3 text-center'>Qty</th><th class='p-3 text-right'>Unit Price</th><th class='p-3 text-right'>Subtotal</th></tr>";
                                     $html .= "</thead>";
                                     $html .= "<tbody class='divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100'>";
 
                                     foreach ($record->items as $item) {
-                                        $title = e($item->product?->name ?? 'Book Item');
+                                        $productName = format_translatable($item->product?->name, 'en') ?: ($item->product?->sku ?? 'Product');
+                                        $title = e($productName);
                                         $qty = (int) $item->quantity;
                                         $price = number_format((float) ($item->price ?? ($item->product?->price ?? 0)), 2);
                                         $subtotal = number_format((float) (($item->price ?? ($item->product?->price ?? 0)) * $qty), 2);
@@ -454,8 +455,8 @@ class AbandonedCartResource extends Resource
                                         $html .= "<tr>";
                                         $html .= "<td class='p-3 font-medium text-gray-900 dark:text-white'>{$title}</td>";
                                         $html .= "<td class='p-3 text-center font-semibold text-gray-700 dark:text-gray-300'>{$qty}</td>";
-                                        $html .= "<td class='p-3 text-right text-gray-600 dark:text-gray-300'>₹{$price}</td>";
-                                        $html .= "<td class='p-3 text-right font-bold text-gray-900 dark:text-white'>₹{$subtotal}</td>";
+                                        $html .= "<td class='p-3 text-right text-gray-600 dark:text-gray-300'>SAR {$price}</td>";
+                                        $html .= "<td class='p-3 text-right font-bold text-gray-900 dark:text-white'>SAR {$subtotal}</td>";
                                         $html .= "</tr>";
                                     }
 
@@ -467,7 +468,7 @@ class AbandonedCartResource extends Resource
                                     $html .= "<td class='p-3 text-gray-700 dark:text-gray-300'>Total Items:</td>";
                                     $html .= "<td class='p-3 text-center text-gray-900 dark:text-white'>{$totalQty}</td>";
                                     $html .= "<td class='p-3 text-right text-gray-700 dark:text-gray-300'>Total Cart Value:</td>";
-                                    $html .= "<td class='p-3 text-right text-base text-red-600 dark:text-red-400'>₹{$total}</td>";
+                                    $html .= "<td class='p-3 text-right text-base text-primary-600 dark:text-primary-400'>SAR {$total}</td>";
                                     $html .= "</tr>";
                                     $html .= "</tfoot>";
                                     $html .= "</table>";
@@ -571,14 +572,14 @@ class AbandonedCartResource extends Resource
                                 ExcelColumn::make('customer_name')->heading('Customer Name')
                                     ->formatStateUsing(fn ($record) => $record->getEffectiveCustomerName()),
                                 ExcelColumn::make('customer_phone')->heading('Mobile Number')
-                                    ->formatStateUsing(fn ($record) => $record->getEffectiveCustomerPhone() ? '+91' . $record->getEffectiveCustomerPhone() : 'N/A'),
+                                    ->formatStateUsing(fn ($record) => $record->getEffectiveCustomerPhone() ?? 'N/A'),
                                 ExcelColumn::make('customer_email')->heading('Email Address')
                                     ->formatStateUsing(fn ($record) => $record->getEffectiveCustomerEmail() ?? 'N/A'),
-                                ExcelColumn::make('items_summary')->heading('Books in Cart')
-                                    ->formatStateUsing(fn ($record) => $record->items->map(fn ($i) => ($i->product?->name ?? 'Book') . ' (Qty: ' . $i->quantity . ')')->implode(', ')),
+                                ExcelColumn::make('items_summary')->heading('Items in Cart')
+                                    ->formatStateUsing(fn ($record) => $record->items->map(fn ($i) => (format_translatable($i->product?->name, 'en') ?: 'Product') . ' (Qty: ' . $i->quantity . ')')->implode(', ')),
                                 ExcelColumn::make('total_items')->heading('Total Qty')
                                     ->formatStateUsing(fn ($record) => $record->getItemsCount()),
-                                ExcelColumn::make('total_value')->heading('Cart Total (INR)')
+                                ExcelColumn::make('total_value')->heading('Cart Total (SAR)')
                                     ->formatStateUsing(fn ($record) => $record->calculateTotal()),
                                 ExcelColumn::make('status')->heading('Status')
                                     ->formatStateUsing(fn ($record) => ucfirst($record->status)),
@@ -603,14 +604,14 @@ class AbandonedCartResource extends Resource
                                 ExcelColumn::make('customer_name')->heading('Customer Name')
                                     ->formatStateUsing(fn ($record) => $record->getEffectiveCustomerName()),
                                 ExcelColumn::make('customer_phone')->heading('Mobile Number')
-                                    ->formatStateUsing(fn ($record) => $record->getEffectiveCustomerPhone() ? '+91' . $record->getEffectiveCustomerPhone() : 'N/A'),
+                                    ->formatStateUsing(fn ($record) => $record->getEffectiveCustomerPhone() ?? 'N/A'),
                                 ExcelColumn::make('customer_email')->heading('Email Address')
                                     ->formatStateUsing(fn ($record) => $record->getEffectiveCustomerEmail() ?? 'N/A'),
-                                ExcelColumn::make('items_summary')->heading('Books in Cart')
-                                    ->formatStateUsing(fn ($record) => $record->items->map(fn ($i) => ($i->product?->name ?? 'Book') . ' (Qty: ' . $i->quantity . ')')->implode(', ')),
+                                ExcelColumn::make('items_summary')->heading('Items in Cart')
+                                    ->formatStateUsing(fn ($record) => $record->items->map(fn ($i) => (format_translatable($i->product?->name, 'en') ?: 'Product') . ' (Qty: ' . $i->quantity . ')')->implode(', ')),
                                 ExcelColumn::make('total_items')->heading('Total Qty')
                                     ->formatStateUsing(fn ($record) => $record->getItemsCount()),
-                                ExcelColumn::make('total_value')->heading('Cart Total (INR)')
+                                ExcelColumn::make('total_value')->heading('Cart Total (SAR)')
                                     ->formatStateUsing(fn ($record) => $record->calculateTotal()),
                                 ExcelColumn::make('status')->heading('Status')
                                     ->formatStateUsing(fn ($record) => ucfirst($record->status)),

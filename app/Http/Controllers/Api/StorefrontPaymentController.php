@@ -231,8 +231,40 @@ class StorefrontPaymentController extends Controller
         }
 
         if (!empty($res['is_paid'])) {
+            $brand = $res['payment_brand'] ?? ($res['raw']['paymentBrand'] ?? ($brand ?? $order->payment_method));
             PaymentManager::markOrderAsPaid($order, $res['transaction_id'] ?? $refId, $gateway, $res['raw'] ?? [], 'FRONTEND_VERIFY');
-            $order->update(['payment_method' => strtolower($gateway)]);
+
+            // Save specific brand & card details into order
+            $meta = is_array($order->meta_data) ? $order->meta_data : [];
+            $meta['payment_gateway'] = $gateway;
+            if ($brand) {
+                $meta['payment_brand'] = $brand;
+            }
+            if (!empty($res['raw']['card'])) {
+                $meta['payment_card'] = [
+                    'last4' => $res['raw']['card']['last4Digits'] ?? null,
+                    'holder' => $res['raw']['card']['holder'] ?? null,
+                    'bank' => $res['raw']['card']['issuer']['bank'] ?? null,
+                    'type' => $res['raw']['card']['type'] ?? null,
+                ];
+            }
+            $order->meta_data = $meta;
+
+            // Map to clean specific payment_method code
+            $normBrand = strtolower((string)$brand);
+            $specificMethod = match(true) {
+                str_contains($normBrand, 'mada') => 'mada',
+                str_contains($normBrand, 'apple') => 'apple_pay',
+                str_contains($normBrand, 'stc') => 'stc_pay',
+                str_contains($normBrand, 'visa') => 'visa',
+                str_contains($normBrand, 'master') => 'mastercard',
+                str_contains($normBrand, 'amex') => 'amex',
+                default => (!empty($order->payment_method) && !in_array($order->payment_method, ['hyperpay', 'card']))
+                    ? $order->payment_method
+                    : strtolower($gateway),
+            };
+            $order->payment_method = $specificMethod;
+            $order->save();
 
             if (!empty($order->subscription_delivery_id)) {
                 $del = \App\Models\SubscriptionDelivery::find($order->subscription_delivery_id);

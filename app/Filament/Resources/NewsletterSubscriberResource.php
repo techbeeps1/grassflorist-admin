@@ -54,11 +54,6 @@ class NewsletterSubscriberResource extends Resource
                             ->default('ar')
                             ->required(),
 
-                        Forms\Components\TextInput::make('coupon_code')
-                            ->label('Assigned Coupon Code')
-                            ->default('SAVE10')
-                            ->maxLength(50),
-
                         Forms\Components\Select::make('status')
                             ->label('Subscription Status')
                             ->options([
@@ -104,7 +99,6 @@ class NewsletterSubscriberResource extends Resource
                                 'ID',
                                 'Email',
                                 'Language',
-                                'Coupon Code',
                                 'Status',
                                 'IP Address',
                                 'Subscribed At',
@@ -115,7 +109,6 @@ class NewsletterSubscriberResource extends Resource
                                     $s->id,
                                     $s->email,
                                     strtoupper($s->locale ?? 'AR'),
-                                    $s->coupon_code ?? 'SAVE10',
                                     ucfirst($s->status ?? 'active'),
                                     $s->ip_address ?? '',
                                     $s->subscribed_at
@@ -149,14 +142,6 @@ class NewsletterSubscriberResource extends Resource
                     ->formatStateUsing(fn (?string $state): string => strtoupper($state ?? 'AR'))
                     ->color(fn (?string $state): string => $state === 'ar' ? 'primary' : 'info')
                     ->sortable(),
-
-                Tables\Columns\TextColumn::make('coupon_code')
-                    ->label('Coupon Code')
-                    ->badge()
-                    ->color('warning')
-                    ->copyable()
-                    ->default('SAVE10')
-                    ->searchable(),
 
                 Tables\Columns\TextColumn::make('status')
                     ->label('Status')

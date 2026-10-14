@@ -63,7 +63,7 @@ class DeliverySlot extends Model
             ->orderBy('sort_order', 'asc')
             ->get();
 
-        return $slots->map(function ($slot) use ($isToday, $currentTime, $targetDate, $dateStr) {
+        return $slots->map(function ($slot) use ($isToday, $currentTime, $targetDate, $dateStr, $timezone) {
             $isAvailable = true;
             $cutoffReason = null;
 
@@ -75,7 +75,7 @@ class DeliverySlot extends Model
             }
 
             if ($isAvailable && $isToday && $slot->start_time) {
-                $slotStart = Carbon::parse($targetDate->toDateString() . ' ' . $slot->start_time);
+                $slotStart = Carbon::parse($targetDate->toDateString() . ' ' . $slot->start_time, $timezone);
                 $cutoffTime = $slotStart->copy()->subHours($slot->cutoff_hours_before ?? 0);
 
                 if ($currentTime->greaterThanOrEqualTo($cutoffTime)) {
