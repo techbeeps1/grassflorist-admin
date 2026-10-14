@@ -258,7 +258,7 @@ class StorefrontPaymentController extends Controller
             ]);
         }
 
-        $freshOrder = $order->fresh(['items']);
+        $freshOrder = $order->fresh(['items', 'subscription']);
         return response()->json([
             'status' => 'success',
             'order_id' => $order->id,

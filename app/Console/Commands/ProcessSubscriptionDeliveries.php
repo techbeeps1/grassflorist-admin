@@ -109,6 +109,17 @@ class ProcessSubscriptionDeliveries extends Command
                             ['order_id' => $order->id, 'transaction_id' => $transactionId]
                         );
 
+                        // 🔔 Send Subscription Renewed notification (Email & SMS)
+                        try {
+                            app(\App\Services\Notifications\NotificationService::class)->sendSubscriptionNotification(
+                                $subscription,
+                                'subscription_renewed',
+                                ['order' => $order]
+                            );
+                        } catch (\Throwable $ne) {
+                            Log::error("Failed to dispatch subscription_renewed notification: " . $ne->getMessage());
+                        }
+
                         $successCount++;
                     } else {
                         // Payment Failed
@@ -138,6 +149,17 @@ class ProcessSubscriptionDeliveries extends Command
                             "Payment failed for delivery #{$delivery->delivery_number}: {$errorMsg} (Attempt {$failedAttempts}/3)",
                             ['order_id' => $order->id, 'error' => $errorMsg]
                         );
+
+                        // 🔔 Send Subscription Payment Failed notification (Email & SMS)
+                        try {
+                            app(\App\Services\Notifications\NotificationService::class)->sendSubscriptionNotification(
+                                $subscription,
+                                'subscription_payment_failed',
+                                ['error' => $errorMsg]
+                            );
+                        } catch (\Throwable $ne) {
+                            Log::error("Failed to dispatch subscription_payment_failed notification: " . $ne->getMessage());
+                        }
 
                         $failedCount++;
                         $this->error("   -> Payment Failed: {$errorMsg}");

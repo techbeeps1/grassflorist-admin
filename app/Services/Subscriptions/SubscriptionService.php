@@ -601,6 +601,17 @@ class SubscriptionService
             ->where('scheduled_date', '>=', now()->toDateString())
             ->update(['delivery_status' => 'paused']);
 
+        // 🔔 Dispatch Subscription Paused notification (Email & SMS)
+        try {
+            app(\App\Services\Notifications\NotificationService::class)->sendSubscriptionNotification(
+                $subscription,
+                'subscription_paused',
+                ['reason' => $reason]
+            );
+        } catch (\Throwable $e) {
+            Log::error("Failed to dispatch subscription_paused notification: " . $e->getMessage());
+        }
+
         return true;
     }
 
@@ -627,6 +638,16 @@ class SubscriptionService
 
         if ($nextDelivery) {
             $subscription->update(['next_delivery_date' => $nextDelivery->scheduled_date->toDateString()]);
+        }
+
+        // 🔔 Dispatch Subscription Resumed notification (Email & SMS)
+        try {
+            app(\App\Services\Notifications\NotificationService::class)->sendSubscriptionNotification(
+                $subscription,
+                'subscription_resumed'
+            );
+        } catch (\Throwable $e) {
+            Log::error("Failed to dispatch subscription_resumed notification: " . $e->getMessage());
         }
 
         return true;
@@ -659,6 +680,17 @@ class SubscriptionService
 
         $this->replenishScheduleIfNeeded($subscription);
 
+        // 🔔 Dispatch Subscription Skipped notification (Email & SMS)
+        try {
+            app(\App\Services\Notifications\NotificationService::class)->sendSubscriptionNotification(
+                $subscription,
+                'subscription_skipped',
+                ['skipped_date' => $delivery->scheduled_date->toDateString()]
+            );
+        } catch (\Throwable $e) {
+            Log::error("Failed to dispatch subscription_skipped notification: " . $e->getMessage());
+        }
+
         return true;
     }
 
@@ -678,6 +710,22 @@ class SubscriptionService
         }
 
         $delivery->reschedule($newDate, $newSlot, $reason ?: 'Rescheduled by customer');
+
+        // 🔔 Dispatch Subscription Rescheduled notification (Email & SMS)
+        try {
+            app(\App\Services\Notifications\NotificationService::class)->sendSubscriptionNotification(
+                $delivery->subscription,
+                'subscription_rescheduled',
+                [
+                    'new_delivery_date' => $newDate,
+                    'new_time_slot' => $newSlot,
+                    'reason' => $reason,
+                ]
+            );
+        } catch (\Throwable $e) {
+            Log::error("Failed to dispatch subscription_rescheduled notification: " . $e->getMessage());
+        }
+
         return true;
     }
 
@@ -709,6 +757,16 @@ class SubscriptionService
             "Delivery address updated to '{$newAddress['address']}, {$newAddress['city']}'.",
             ['delivery_address' => $newAddress]
         );
+
+        // 🔔 Dispatch Subscription Address Updated notification (Email & SMS)
+        try {
+            app(\App\Services\Notifications\NotificationService::class)->sendSubscriptionNotification(
+                $subscription,
+                'subscription_address_updated'
+            );
+        } catch (\Throwable $e) {
+            Log::error("Failed to dispatch subscription_address_updated notification: " . $e->getMessage());
+        }
 
         return true;
     }
@@ -767,6 +825,15 @@ class SubscriptionService
         $subscription->deliveries()
             ->where('delivery_status', 'scheduled')
             ->update(['delivery_status' => 'cancelled']);
+
+        // 🔔 Dispatch Subscription Cancelled notifications (Customer & Admin Email/SMS)
+        try {
+            $notifService = app(\App\Services\Notifications\NotificationService::class);
+            $notifService->sendSubscriptionNotification($subscription, 'subscription_cancelled', ['reason' => $reason]);
+            $notifService->sendSubscriptionNotification($subscription, 'admin_subscription_cancelled', ['reason' => $reason]);
+        } catch (\Throwable $e) {
+            Log::error("Failed to dispatch subscription_cancelled notification: " . $e->getMessage());
+        }
 
         return true;
     }

@@ -580,4 +580,157 @@ class NotificationService
         // Dispatch Email Template in subscriber's browsing language with live logging
         return $this->sendEmail('newsletter_welcome', $subscriber->email, $data, $locale, null, $subscriber->ip_address ?: request()?->ip());
     }
+
+    /**
+     * Handle Subscription lifecycle notifications (Email & SMS to Customer and Admin)
+     */
+    public function sendSubscriptionNotification(
+        \App\Models\Subscription $subscription,
+        string $eventKey,
+        array $extraData = [],
+        ?string $preferredLocale = null
+    ): void {
+        try {
+            $emailTemplate = EmailTemplate::where('event_key', $eventKey)->first();
+            $smsTemplate = SmsTemplate::where('event_key', $eventKey)->first();
+
+            if ((!$emailTemplate || !$emailTemplate->is_active) && (!$smsTemplate || !$smsTemplate->is_active)) {
+                return;
+            }
+
+            // Determine customer notification language:
+            // 1. Explicitly passed locale
+            // 2. Saved metadata locale / order_language
+            // 3. Request header / param
+            // 4. Default 'ar'
+            $locale = $preferredLocale
+                ?: ($subscription->metadata['locale'] ?? null)
+                ?: ($subscription->metadata['order_language'] ?? null)
+                ?: (request()?->header('X-Locale')
+                ?: (request()?->input('locale')
+                ?: (request()?->input('lang')
+                ?: (app()->getLocale() ?: 'ar'))));
+            $locale = in_array(strtolower((string)$locale), ['en', 'ar'], true) ? strtolower((string)$locale) : 'ar';
+            $isAr = ($locale === 'ar');
+
+            $customer = $subscription->customer;
+            $addr = $subscription->delivery_address ?: [];
+
+            $customerName = trim(($customer?->first_name ?? '') . ' ' . ($customer?->last_name ?? ''));
+            if (empty($customerName)) {
+                $customerName = $addr['recipient_name'] ?? ($customer?->name ?: ($isAr ? 'عميلنا العزيز' : 'Valued Subscriber'));
+            }
+
+            $customerEmail = $customer?->email ?? ($subscription->metadata['email'] ?? null);
+            $customerPhone = $customer?->phone ?? ($addr['recipient_phone'] ?? null);
+
+            // Frequency labels
+            $freqLabels = [
+                'weekly' => ['en' => 'Weekly', 'ar' => 'أسبوعياً'],
+                'biweekly' => ['en' => 'Bi-weekly', 'ar' => 'كل أسبوعين'],
+                'monthly' => ['en' => 'Monthly', 'ar' => 'شهرياً'],
+                'custom' => ['en' => 'Custom Schedule', 'ar' => 'جدول مخصص'],
+            ];
+            $freqKey = strtolower((string)$subscription->frequency);
+            $frequency = $freqLabels[$freqKey][$locale] ?? ($freqLabels[$freqKey]['en'] ?? ucfirst($subscription->frequency));
+
+            // Duration labels
+            $durLabels = [
+                '1_month' => ['en' => '1 Month', 'ar' => 'شهر واحد'],
+                '3_months' => ['en' => '3 Months', 'ar' => '3 أشهر'],
+                '6_months' => ['en' => '6 Months', 'ar' => '6 أشهر'],
+                '12_months' => ['en' => '12 Months', 'ar' => '12 شهراً'],
+                'until_cancelled' => ['en' => 'Until Cancelled', 'ar' => 'حتى الإلغاء'],
+                'custom' => ['en' => 'Custom Duration', 'ar' => 'مدة مخصصة'],
+            ];
+            $durKey = strtolower((string)$subscription->duration_type);
+            $duration = $durLabels[$durKey][$locale] ?? ($durLabels[$durKey]['en'] ?? ($isAr ? '3 أشهر' : '3 Months'));
+
+            // Price per delivery
+            $totalAmount = (float)$subscription->total_per_delivery;
+            $currencyLabel = $isAr ? 'ر.س' : 'SAR';
+            $totalFormatted = number_format($totalAmount, 2) . ' ' . $currencyLabel;
+
+            // Delivery date
+            $nextDeliveryDate = $subscription->next_delivery_date
+                ? \Carbon\Carbon::parse($subscription->next_delivery_date)->format('Y-m-d')
+                : ($subscription->start_date ? \Carbon\Carbon::parse($subscription->start_date)->format('Y-m-d') : 'N/A');
+
+            $deliveryTime = $subscription->delivery_time_slot ?: ($isAr ? 'الفترة الصباحية (09:00 ص - 01:00 م)' : 'Morning (09:00 AM - 01:00 PM)');
+
+            // Product / Arrangement name
+            $productName = $subscription->product?->name ?? ($subscription->metadata['plan_name'] ?? ($isAr ? 'باقة الزهور الدورية' : 'Floral Subscription Plan'));
+
+            // Address formatting
+            $recipientName = $addr['recipient_name'] ?? $customerName;
+            $recipientPhone = $addr['recipient_phone'] ?? ($customerPhone ?: 'N/A');
+            $fullAddress = trim(($addr['address'] ?? '') . ', ' . ($addr['city'] ?? 'Jeddah'));
+            if (empty(trim($fullAddress, ', '))) {
+                $fullAddress = 'Jeddah, Saudi Arabia';
+            }
+
+            $frontendUrl = rtrim(config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:3000')), '/');
+            $langPrefix = $locale === 'en' ? '/en' : '';
+            $subscriptionUrl = "{$frontendUrl}{$langPrefix}/account?tab=subscriptions";
+
+            $cancellationReason = $extraData['reason'] ?? ($subscription->cancellation_reason ?: ($isAr ? 'بناءً على طلب العميل' : 'Requested by customer'));
+            $newDeliveryDate = $extraData['new_delivery_date'] ?? $nextDeliveryDate;
+            $newTimeSlot = $extraData['new_time_slot'] ?? $deliveryTime;
+            $pauseResumeDate = $extraData['pause_resume_date'] ?? ($subscription->pause_resume_date ? \Carbon\Carbon::parse($subscription->pause_resume_date)->format('Y-m-d') : ($isAr ? 'عند الطلب من لوحة التحكم' : 'Upon request from dashboard'));
+
+            $data = array_merge([
+                'customer_name' => $customerName,
+                'subscription_number' => $subscription->subscription_number,
+                'product_name' => $productName,
+                'frequency' => $frequency,
+                'duration' => $duration,
+                'total_per_delivery' => $totalFormatted,
+                'currency' => $subscription->currency ?: 'SAR',
+                'delivery_date' => $nextDeliveryDate,
+                'delivery_time' => $deliveryTime,
+                'recipient_name' => $recipientName,
+                'recipient_phone' => $recipientPhone,
+                'delivery_address' => $fullAddress,
+                'cancellation_reason' => $cancellationReason,
+                'new_delivery_date' => $newDeliveryDate,
+                'pause_resume_date' => $pauseResumeDate,
+                'subscription_url' => $subscriptionUrl,
+            ], $extraData);
+
+            // 1. Dispatch Customer Email
+            if ($emailTemplate && $emailTemplate->is_active && in_array($emailTemplate->recipient_type, ['customer', 'both']) && !empty($customerEmail)) {
+                $this->sendEmail($eventKey, $customerEmail, $data, $locale);
+            }
+
+            // 2. Dispatch Admin Email
+            if ($emailTemplate && $emailTemplate->is_active && in_array($emailTemplate->recipient_type, ['admin', 'both'])) {
+                $adminEmails = !empty($emailTemplate->notification_emails)
+                    ? array_filter(array_map('trim', explode(',', $emailTemplate->notification_emails)))
+                    : [config('mail.from.address', 'admin@grassflorist.com')];
+                if (!empty($adminEmails)) {
+                    $this->sendEmail($eventKey, $adminEmails, $data, 'en');
+                }
+            }
+
+            // 3. Dispatch Customer SMS via Msegat
+            if ($smsTemplate && $smsTemplate->is_active && in_array($smsTemplate->recipient_type, ['customer', 'both']) && !empty($customerPhone)) {
+                $this->sendSms($eventKey, $customerPhone, $data, $locale);
+            }
+
+            // 4. Dispatch Admin SMS
+            if ($smsTemplate && $smsTemplate->is_active && in_array($smsTemplate->recipient_type, ['admin', 'both'])) {
+                $adminPhones = !empty($smsTemplate->notification_phones)
+                    ? array_filter(array_map('trim', explode(',', $smsTemplate->notification_phones)))
+                    : [];
+                if (!empty($adminPhones)) {
+                    $this->sendSms($eventKey, $adminPhones, $data, 'en');
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::error("[NotificationService] Subscription notification error ({$eventKey}): " . $e->getMessage(), [
+                'subscription_id' => $subscription->id,
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
+    }
 }

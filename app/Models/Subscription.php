@@ -78,8 +78,29 @@ class Subscription extends Model
         static::creating(function (Subscription $subscription) {
             if (empty($subscription->subscription_number)) {
                 $year = date('Y');
-                $count = static::whereYear('created_at', $year)->count() + 1;
-                $subscription->subscription_number = 'SUB-' . $year . '-' . str_pad((string)$count, 5, '0', STR_PAD_LEFT);
+                $prefix = 'SUB-' . $year . '-';
+
+                // Find the highest existing sequence number for this year (including soft-deleted)
+                $maxRecord = static::withTrashed()
+                    ->where('subscription_number', 'like', $prefix . '%')
+                    ->orderByRaw('CAST(SUBSTRING(subscription_number, 10) AS UNSIGNED) DESC')
+                    ->first();
+
+                $nextSeq = 1;
+                if ($maxRecord && preg_match('/SUB-\d{4}-(\d+)/', $maxRecord->subscription_number, $matches)) {
+                    $nextSeq = ((int)$matches[1]) + 1;
+                }
+
+                // Ensure candidate does not collide with any existing record (withTrashed)
+                do {
+                    $candidate = $prefix . str_pad((string)$nextSeq, 5, '0', STR_PAD_LEFT);
+                    $exists = static::withTrashed()->where('subscription_number', $candidate)->exists();
+                    if ($exists) {
+                        $nextSeq++;
+                    }
+                } while ($exists);
+
+                $subscription->subscription_number = $candidate;
             }
         });
     }

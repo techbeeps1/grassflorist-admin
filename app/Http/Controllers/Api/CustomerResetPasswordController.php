@@ -21,7 +21,10 @@ class CustomerResetPasswordController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
+            return response()->json([
+                'message' => $validator->errors()->first(),
+                'errors' => $validator->errors()
+            ], 422);
         }
 
         $status = Password::broker('customers')->reset(
@@ -36,6 +39,6 @@ class CustomerResetPasswordController extends Controller
 
         return $status === Password::PASSWORD_RESET
             ? response()->json(['message' => 'Password reset successfully'], 200)
-            : response()->json(['message' => 'Unable to reset password'], 400);
+            : response()->json(['message' => __($status) ?: 'Unable to reset password'], 400);
     }
 }

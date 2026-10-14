@@ -260,6 +260,16 @@ class PaymentManager
                     'token' => $token,
                 ]);
 
+                // 🌸 Send Subscription Confirmed & Admin Alert notifications (Email & SMS)
+                try {
+                    /** @var \App\Services\Notifications\NotificationService $notifService */
+                    $notifService = app(\App\Services\Notifications\NotificationService::class);
+                    $notifService->sendSubscriptionNotification($sub, 'subscription_confirmed');
+                    $notifService->sendSubscriptionNotification($sub, 'admin_subscription_created');
+                } catch (\Throwable $notifEx) {
+                    Log::error("Failed to dispatch subscription_confirmed notification for Sub #{$sub->id}: " . $notifEx->getMessage());
+                }
+
                 Log::info("Subscription #{$sub->subscription_number} activated with token [{$token}] via {$effectiveGateway} for Order #{$order->order_number}");
             }
         } catch (\Throwable $e) {

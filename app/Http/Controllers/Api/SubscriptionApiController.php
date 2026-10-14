@@ -208,6 +208,17 @@ class SubscriptionApiController extends Controller
                 }
             }
 
+            // 🌸 If subscription is directly active (e.g. COD / free), trigger confirmation notifications
+            if ($subscription->status === 'active') {
+                try {
+                    $notifService = app(\App\Services\Notifications\NotificationService::class);
+                    $notifService->sendSubscriptionNotification($subscription, 'subscription_confirmed');
+                    $notifService->sendSubscriptionNotification($subscription, 'admin_subscription_created');
+                } catch (\Throwable $ne) {
+                    Log::error("Direct active notification failed: " . $ne->getMessage());
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Subscription created successfully.',

@@ -251,5 +251,7 @@ class NotificationTemplatesSeeder extends Seeder
         foreach ($smsTemplates as $st) {
             SmsTemplate::updateOrCreate(['event_key' => $st['event_key']], $st);
         }
+
+        $this->call(SubscriptionNotificationTemplatesSeeder::class);
     }
 }
