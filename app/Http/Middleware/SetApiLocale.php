@@ -39,32 +39,31 @@ class SetApiLocale
             return $next($request);
         }
 
-        // 2. API / Storefront Requests
-        $detected = $request->header('X-Locale')
-            ?: ($request->input('locale')
-            ?: ($request->input('order_language')
-            ?: ($request->input('lang')
-            ?: ($request->query('locale')
-            ?: ($request->query('lang'))))));
-
-        if (!$detected) {
-            if (
-                $request->is('api/en*') ||
-                $request->is('en/*') ||
-                $request->segment(1) === 'en' ||
-                $request->segment(2) === 'en'
-            ) {
-                $detected = 'en';
-            } elseif (
-                $request->is('api/ar*') ||
-                $request->is('ar/*') ||
-                $request->segment(1) === 'ar' ||
-                $request->segment(2) === 'ar'
-            ) {
-                $detected = 'ar';
-            } else {
-                $detected = $this->detectAcceptLanguage($request);
-            }
+        // 2. API / Storefront Requests: Priority 1 is URL Prefix (/api/en/... or /api/ar/...)
+        $detected = null;
+        if (
+            $request->is('api/en*') ||
+            $request->is('en/*') ||
+            $request->segment(1) === 'en' ||
+            $request->segment(2) === 'en'
+        ) {
+            $detected = 'en';
+        } elseif (
+            $request->is('api/ar*') ||
+            $request->is('ar/*') ||
+            $request->segment(1) === 'ar' ||
+            $request->segment(2) === 'ar'
+        ) {
+            $detected = 'ar';
+        } else {
+            // Priority 2: Fallback to input/query/header
+            $detected = $request->input('locale')
+                ?: ($request->input('order_language')
+                ?: ($request->input('lang')
+                ?: ($request->query('locale')
+                ?: ($request->query('lang')
+                ?: ($request->header('X-Locale')
+                ?: ($this->detectAcceptLanguage($request)))))));
         }
 
         $locale = strtolower(substr((string) ($detected ?: 'ar'), 0, 2));
