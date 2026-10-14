@@ -26,7 +26,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-         Order::observe(OrderObserver::class);
+        Order::observe(OrderObserver::class);
+        \App\Models\Customer::observe(\App\Observers\CustomerObserver::class);
+        \App\Models\User::observe(\App\Observers\UserObserver::class);
 
         \Filament\Tables\Table::$defaultCurrency = config('app.currency', 'INR');
         \Filament\Tables\Table::$defaultNumberLocale = config('app.currency_locale', 'en_IN');

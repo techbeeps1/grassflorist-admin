@@ -1,28 +1,50 @@
 <?php
 
-// app/Observers/UserObserver.php
-
 namespace App\Observers;
 
 use App\Models\User;
-use App\Models\Vendor;
+use App\Services\Notifications\NotificationService;
+use Illuminate\Support\Facades\Log;
 
 class UserObserver
 {
-    public function created(User $user)
+    /**
+     * Handle the User "updating" event.
+     */
+    public function updating(User $user): void
     {
-        // No longer needed - handled in CreateUser page
+        // When user account is deactivated
+        if ($user->isDirty('is_active') && !$user->is_active) {
+            // Revoke all Sanctum API tokens immediately
+            try {
+                $user->tokens()->delete();
+            } catch (\Throwable $t) {}
+
+            try {
+                /** @var NotificationService $notificationService */
+                $notificationService = app(NotificationService::class);
+                $notificationService->sendAccountDeactivatedNotification($user);
+            } catch (\Throwable $e) {
+                Log::error('[UserObserver] Failed to send deactivation notification: ' . $e->getMessage());
+            }
+        }
     }
 
-    public function updated(User $user)
+    /**
+     * Handle the User "deleting" event.
+     */
+    public function deleting(User $user): void
     {
-        // No longer needed - handled in EditUser page
-    }
+        try {
+            $user->tokens()->delete();
+        } catch (\Throwable $t) {}
 
-    public function deleting(User $user)
-    {
-        if ($user->vendor) {
-            $user->vendor->delete();
+        try {
+            /** @var NotificationService $notificationService */
+            $notificationService = app(NotificationService::class);
+            $notificationService->sendAccountDeletedNotification($user);
+        } catch (\Throwable $e) {
+            Log::error('[UserObserver] Failed to send deletion notification: ' . $e->getMessage());
         }
     }
 }

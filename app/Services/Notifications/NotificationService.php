@@ -733,4 +733,135 @@ class NotificationService
             ]);
         }
     }
+
+    /**
+     * Dispatch account deactivation notification via Email and SMS
+     */
+    public function sendAccountDeactivatedNotification(
+        \App\Models\Customer|\App\Models\User $account,
+        ?string $reason = null,
+        ?string $preferredLocale = null
+    ): void {
+        try {
+            $locale = $preferredLocale
+                ?: (request()?->header('X-Locale')
+                ?: (request()?->input('locale')
+                ?: (request()?->input('lang')
+                ?: (app()->getLocale() ?: 'ar'))));
+            $locale = in_array(strtolower(substr((string)$locale, 0, 2)), ['en', 'ar'], true) ? strtolower(substr((string)$locale, 0, 2)) : 'ar';
+
+            $fullName = $account instanceof \App\Models\Customer
+                ? trim(($account->first_name ?? '') . ' ' . ($account->last_name ?? ''))
+                : ($account->name ?? '');
+            $customerName = !empty($fullName) ? $fullName : ($account->username ?? ($locale === 'ar' ? 'العميل العزيز' : 'Valued Member'));
+
+            $phone = null;
+            if ($account instanceof \App\Models\Customer) {
+                $phone = $account->phone;
+            } elseif ($account instanceof \App\Models\User) {
+                $phone = $account->vendor?->vendor_phone ?? null;
+            }
+
+            $cleanPhone = null;
+            if (!empty($phone)) {
+                $clean = preg_replace('/[^\d+]/', '', (string)$phone);
+                if (!empty($clean) && !in_array($clean, ['9876543210', '0500000000', '+966500000000'])) {
+                    $cleanPhone = $clean;
+                }
+            }
+
+            $reasonText = $reason ?: ($locale === 'ar' ? 'مراجعة أمنية وإدارية للنظام' : 'Administrative and security review');
+            $deactivationDate = now()->format('Y-m-d h:i A');
+
+            $data = [
+                'customer_name' => $customerName,
+                'customer_email' => $account->email,
+                'customer_phone' => $cleanPhone ?: 'N/A',
+                'deactivation_date' => $deactivationDate,
+                'reason' => $reasonText,
+            ];
+
+            // 1. Dispatch Email Template
+            if (!empty($account->email)) {
+                $this->sendEmail('account_deactivated', $account->email, $data, $locale);
+            }
+
+            // 2. Dispatch SMS Template via Msegat
+            if (!empty($cleanPhone)) {
+                $this->sendSms('account_deactivated', $cleanPhone, $data, $locale);
+            }
+        } catch (\Throwable $e) {
+            Log::error("[NotificationService] Account deactivated notification failed: " . $e->getMessage(), [
+                'account_id' => $account->id ?? null,
+                'email' => $account->email ?? null,
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
+    }
+
+    /**
+     * Dispatch account deleted notification via Email and SMS
+     */
+    public function sendAccountDeletedNotification(
+        \App\Models\Customer|\App\Models\User $account,
+        ?string $preferredLocale = null
+    ): void {
+        try {
+            $locale = $preferredLocale
+                ?: (request()?->header('X-Locale')
+                ?: (request()?->input('locale')
+                ?: (request()?->input('lang')
+                ?: (app()->getLocale() ?: 'ar'))));
+            $locale = in_array(strtolower(substr((string)$locale, 0, 2)), ['en', 'ar'], true) ? strtolower(substr((string)$locale, 0, 2)) : 'ar';
+
+            $fullName = $account instanceof \App\Models\Customer
+                ? trim(($account->first_name ?? '') . ' ' . ($account->last_name ?? ''))
+                : ($account->name ?? '');
+            $customerName = !empty($fullName) ? $fullName : ($account->username ?? ($locale === 'ar' ? 'العميل العزيز' : 'Valued Member'));
+
+            $phone = null;
+            if ($account instanceof \App\Models\Customer) {
+                $phone = $account->phone;
+            } elseif ($account instanceof \App\Models\User) {
+                $phone = $account->vendor?->vendor_phone ?? null;
+            }
+
+            $cleanPhone = null;
+            if (!empty($phone)) {
+                $clean = preg_replace('/[^\d+]/', '', (string)$phone);
+                if (!empty($clean) && !in_array($clean, ['9876543210', '0500000000', '+966500000000'])) {
+                    $cleanPhone = $clean;
+                }
+            }
+
+            $frontendUrl = rtrim(config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:3000')), '/');
+            $langPrefix = $locale === 'en' ? '/en' : '';
+            $shopUrl = "{$frontendUrl}{$langPrefix}";
+            $deletionDate = now()->format('Y-m-d h:i A');
+
+            $data = [
+                'customer_name' => $customerName,
+                'customer_email' => $account->email,
+                'customer_phone' => $cleanPhone ?: 'N/A',
+                'deletion_date' => $deletionDate,
+                'shop_url' => $shopUrl,
+            ];
+
+            // 1. Dispatch Email Template
+            if (!empty($account->email)) {
+                $this->sendEmail('account_deleted', $account->email, $data, $locale);
+            }
+
+            // 2. Dispatch SMS Template via Msegat
+            if (!empty($cleanPhone)) {
+                $this->sendSms('account_deleted', $cleanPhone, $data, $locale);
+            }
+        } catch (\Throwable $e) {
+            Log::error("[NotificationService] Account deleted notification failed: " . $e->getMessage(), [
+                'account_id' => $account->id ?? null,
+                'email' => $account->email ?? null,
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
+    }
 }

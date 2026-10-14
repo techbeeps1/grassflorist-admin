@@ -17,6 +17,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
         $middleware->append(\App\Http\Middleware\DisallowIndexingMiddleware::class);
         $middleware->append(\App\Http\Middleware\SetApiLocale::class);
+        $middleware->alias([
+            'customer.active' => \App\Http\Middleware\EnsureCustomerIsActive::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
 

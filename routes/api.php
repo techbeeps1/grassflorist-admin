@@ -77,7 +77,7 @@ $registerStoreRoutes = function () {
         Route::get('/verify-email', [AuthController::class, 'verifyEmail']);
         Route::post('/send-verification-email', [AuthController::class, 'sendVerificationEmail']);
 
-        Route::middleware('auth:customer')->group(function () { 
+        Route::middleware(['auth:customer', 'customer.active'])->group(function () { 
             Route::post('/passwordchange', [AuthController::class, 'passwordchange']);
             Route::get('user_order/{user_id?}', [OrderApiController::class, 'userOrders']);
             Route::get('orders', [OrderApiController::class, 'userOrders']);
@@ -90,19 +90,19 @@ $registerStoreRoutes = function () {
             Route::get('/view-wishlist', [WishlistController::class, 'index']);
             Route::get('/view-wishlistid', [WishlistController::class, 'wishlistid']);
             Route::delete('/delete-wishlist', [WishlistController::class, 'destroy']);
-        });
 
-        // 📅 Subscriptions Customer Dashboard Actions
-        Route::get('/subscriptions', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'index']);
-        Route::get('/subscriptions/{id}', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'show']);
-        Route::post('/subscriptions/{id}/pause', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'pause']);
-        Route::post('/subscriptions/{id}/resume', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'resume']);
-        Route::post('/subscriptions/{id}/skip-next', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'skipNext']);
-        Route::post('/subscriptions/{id}/deliveries/{deliveryId}/reschedule', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'reschedule']);
-        Route::post('/subscriptions/{id}/address', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'updateAddress']);
-        Route::post('/subscriptions/{id}/quantity', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'updateQuantity']);
-        Route::post('/subscriptions/{id}/cancel', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'cancel']);
-        Route::post('/subscriptions/{id}/retry-payment', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'retryPayment']);
+            // 📅 Subscriptions Customer Dashboard Actions
+            Route::get('/subscriptions', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'index']);
+            Route::get('/subscriptions/{id}', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'show']);
+            Route::post('/subscriptions/{id}/pause', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'pause']);
+            Route::post('/subscriptions/{id}/resume', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'resume']);
+            Route::post('/subscriptions/{id}/skip-next', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'skipNext']);
+            Route::post('/subscriptions/{id}/deliveries/{deliveryId}/reschedule', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'reschedule']);
+            Route::post('/subscriptions/{id}/address', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'updateAddress']);
+            Route::post('/subscriptions/{id}/quantity', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'updateQuantity']);
+            Route::post('/subscriptions/{id}/cancel', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'cancel']);
+            Route::post('/subscriptions/{id}/retry-payment', [\App\Http\Controllers\Api\SubscriptionApiController::class, 'retryPayment']);
+        });
     });
 
     // 🌸 Subscription Public Deals & Pricing Endpoints

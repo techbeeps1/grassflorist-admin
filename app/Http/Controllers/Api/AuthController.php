@@ -112,6 +112,21 @@ class AuthController extends Controller
             ], 401);
         }
 
+        /** @var \App\Models\Customer|null $customer */
+        $customer = auth('customer')->user();
+        if (!$customer || !$customer->is_active) {
+            try {
+                auth('customer')->setToken($token)->invalidate();
+            } catch (\Throwable $t) {}
+
+            return response()->json([
+                'status' => 'error',
+                'code' => 'account_deactivated',
+                'error' => 'Your account has been deactivated. Please contact support.',
+                'message' => 'Your account has been deactivated. Please contact support.',
+            ], 403);
+        }
+
         return response()->json([
             'access_token' => $token,
             'customer' => [
@@ -153,6 +168,13 @@ class AuthController extends Controller
     {   
         try {
             $user = $request->user();
+            if (!$user || !$user->is_active) {
+                return response()->json([
+                    'status' => 'error',
+                    'code' => 'account_deactivated',
+                    'message' => 'Account is deactivated or not found.'
+                ], 401);
+            }
             if ($user && ($user->phone === '9876543210' || $user->phone === '0500000000')) {
                 $user->phone = null;
                 try {
@@ -371,15 +393,46 @@ class AuthController extends Controller
                     $newToken = auth('customer')->setToken($token)->refresh();
                     $user = auth('customer')->setToken($newToken)->user();
 
+                    if (!$user || !$user->is_active) {
+                        try {
+                            auth('customer')->setToken($newToken)->invalidate();
+                        } catch (\Throwable $t) {}
+
+                        return response()->json([
+                            'status' => 'error',
+                            'code' => 'account_deactivated',
+                            'message' => 'Account has been deactivated or removed.',
+                            'error' => 'Your account is inactive or has been deleted. Please login again.'
+                        ], 401);
+                    }
+
+                    // Check token version
+                    try {
+                        $payload = JWTAuth::setToken($token)->getPayload();
+                        $tokenVersionInClaim = $payload?->get('tv');
+                        if ($tokenVersionInClaim !== null && (int)$tokenVersionInClaim !== (int)($user->token_version ?? 1)) {
+                            try {
+                                auth('customer')->setToken($newToken)->invalidate();
+                            } catch (\Throwable $t) {}
+
+                            return response()->json([
+                                'status' => 'error',
+                                'code' => 'session_revoked',
+                                'message' => 'Session has been invalidated. Please log in again.',
+                                'error' => 'Session invalidated'
+                            ], 401);
+                        }
+                    } catch (\Throwable $t) {}
+
                     return response()->json([
                         'status' => 'success',
                         'access_token' => $newToken,
                         'token_type' => 'bearer',
                         'expires_in' => auth('customer')->factory()->getTTL() * 60,
-                        'customer' => $user ? [
+                        'customer' => [
                             'id' => $user->id,
                             'name' => $user->first_name,
-                        ] : null,
+                        ],
                     ], 200);
 
                 } catch (TokenExpiredException $e) {
@@ -428,12 +481,36 @@ class AuthController extends Controller
                     // Authenticate the user using the token
                     $user = auth('customer')->setToken($token)->authenticate();
                     
-                    if (!$user) {
+                    if (!$user || !$user->is_active) {
+                        try {
+                            JWTAuth::setToken($token)->invalidate();
+                        } catch (\Throwable $t) {}
+
                         return response()->json([
                             'status' => 'error',
-                            'message' => 'User not found'
-                        ], 404);
+                            'code' => 'account_deactivated',
+                            'message' => 'User not found or account deactivated',
+                            'error' => 'Account inactive'
+                        ], 401);
                     }
+
+                    // Verify token version
+                    try {
+                        $payload = JWTAuth::getPayload($token);
+                        $claimVersion = $payload?->get('tv');
+                        if ($claimVersion !== null && (int)$claimVersion !== (int)($user->token_version ?? 1)) {
+                            try {
+                                JWTAuth::setToken($token)->invalidate();
+                            } catch (\Throwable $t) {}
+
+                            return response()->json([
+                                'status' => 'error',
+                                'code' => 'session_revoked',
+                                'message' => 'Your session has expired. Please log in again.',
+                                'error' => 'Session invalidated'
+                            ], 401);
+                        }
+                    } catch (\Throwable $t) {}
 
                     // Return user details (excluding sensitive fields)
                     return response()->json([

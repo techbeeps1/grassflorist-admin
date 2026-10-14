@@ -29,6 +29,8 @@ class Customer extends Authenticatable implements CanResetPasswordContract, JWTS
         'country',
         'address_2',
         'password',
+        'is_active',
+        'token_version',
         'meta_data',
         'registered_at',
         'email_verified_at',
@@ -44,6 +46,8 @@ class Customer extends Authenticatable implements CanResetPasswordContract, JWTS
     protected function casts(): array
     {
         return [
+            'is_active' => 'boolean',
+            'token_version' => 'integer',
             'email_verified_at' => 'datetime',
             'registered_at' => 'datetime',
             'meta_data' => 'array',
@@ -64,7 +68,18 @@ class Customer extends Authenticatable implements CanResetPasswordContract, JWTS
 
     public function getJWTCustomClaims(): array
     {
-        return [];
+        return [
+            'tv' => (int) ($this->token_version ?? 1),
+            'act' => (bool) ($this->is_active ?? true),
+        ];
+    }
+
+    /**
+     * Invalidate all existing tokens by incrementing token_version
+     */
+    public function invalidateAllTokens(): void
+    {
+        $this->increment('token_version');
     }
 
     /**

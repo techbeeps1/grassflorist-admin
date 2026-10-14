@@ -146,6 +146,28 @@ class NotificationTemplatesSeeder extends Seeder
                 'allowed_shortcodes' => '{email}, {coupon_code}, {discount_percent}, {shop_url}',
                 'is_active' => true,
             ],
+            [
+                'event_key' => 'account_deactivated',
+                'name' => 'Account Deactivated Notice (إشعار تعطيل وتجميد الحساب)',
+                'subject_en' => 'Your Grass Florist account has been deactivated 🔒',
+                'subject_ar' => 'تم تعطيل حسابك في غراس فلوريست 🔒',
+                'body_en' => '<h2>Hello {customer_name},</h2><p>Please be advised that your Grass Florist account associated with <strong>{customer_email}</strong> has been deactivated by administration.</p><div class="card"><strong>Account:</strong> {customer_email}<br><strong>Deactivation Date:</strong> {deactivation_date}<br><strong>Reason:</strong> {reason}</div><p>You have been automatically logged out of all active sessions and your access tokens have been invalidated.</p><p>If you believe this was done in error or would like to request reactivation, please reach out to our concierge team at <a href="mailto:support@grassflorist.com">support@grassflorist.com</a> or call <a href="tel:+966500000000">+966 50 000 0000</a>.</p><p>Warm regards,<br><strong>Grass Florist Concierge Team</strong></p>',
+                'body_ar' => '<h2 dir="rtl">مرحباً {customer_name}،</h2><p dir="rtl">نود إشعاركم بأنه تم تعطيل حسابكم في غراس فلوريست المرتبط بالبريد الإلكتروني <strong>{customer_email}</strong> من قِبل إدارة النظام.</p><div class="card" dir="rtl"><strong>الحساب:</strong> {customer_email}<br><strong>تاريخ التعطيل:</strong> {deactivation_date}<br><strong>السبب:</strong> {reason}</div><p dir="rtl">تم تسجيل خروجكم تلقائياً من كافة الجلسات النشطة وإلغاء صلاحية رموز الوصول (Tokens) فوراً.</p><p dir="rtl">إذا كنت تعتقد أن هذا الإجراء تم عن طريق الخطأ أو ترغب بطلب إعادة تفعيل الحساب، يسعدنا تواصلكم مع فريق خدمة العملاء عبر <a href="mailto:support@grassflorist.com">support@grassflorist.com</a> أو الاتصال بـ <a href="tel:+966500000000">+966 50 000 0000</a>.</p><p dir="rtl">مع أطيب التحيات،<br><strong>فريق خدمة عملاء غراس فلوريست</strong></p>',
+                'recipient_type' => 'customer',
+                'allowed_shortcodes' => '{customer_name}, {customer_email}, {customer_phone}, {deactivation_date}, {reason}',
+                'is_active' => true,
+            ],
+            [
+                'event_key' => 'account_deleted',
+                'name' => 'Account Deleted Notice (إشعار حذف الحساب نهائياً)',
+                'subject_en' => 'Your Grass Florist account has been deleted 🌿',
+                'subject_ar' => 'تم حذف حسابك في غراس فلوريست 🌿',
+                'body_en' => '<h2>Hello {customer_name},</h2><p>Your Grass Florist account associated with <strong>{customer_email}</strong> has been deleted from our system by administration.</p><div class="card"><strong>Account:</strong> {customer_email}<br><strong>Deletion Date:</strong> {deletion_date}</div><p>All active sessions and tokens have been revoked immediately. Your personal profile and saved data have been removed.</p><p>If you wish to shop with us again in the future, you are always welcome to register a new account anytime at <a href="{shop_url}">grassflorist.com</a>.</p><p>Thank you for being part of Grass Florist.</p><p>Warm regards,<br><strong>Grass Florist Concierge Team</strong></p>',
+                'body_ar' => '<h2 dir="rtl">مرحباً {customer_name}،</h2><p dir="rtl">نود إشعاركم بأنه تم حذف حسابكم في غراس فلوريست المرتبط بالبريد الإلكتروني <strong>{customer_email}</strong> نهائياً من قِبل إدارة النظام.</p><div class="card" dir="rtl"><strong>الحساب:</strong> {customer_email}<br><strong>تاريخ الحذف:</strong> {deletion_date}</div><p dir="rtl">تم إبطال جميع رموز الدخول والجلسات النشطة فوراً وحذف ملفك الشخصي من النظام.</p><p dir="rtl">إذا رغبت بالتسوق معنا مجدداً في المستقبل، نسعد دائماً بإنشاء حساب جديد في أي وقت عبر <a href="{shop_url}">grassflorist.com</a>.</p><p dir="rtl">نشكركم على تواجدكم معنا في غراس فلوريست.</p><p dir="rtl">مع أطيب التحيات،<br><strong>فريق خدمة عملاء غراس فلوريست</strong></p>',
+                'recipient_type' => 'customer',
+                'allowed_shortcodes' => '{customer_name}, {customer_email}, {deletion_date}, {shop_url}',
+                'is_active' => true,
+            ],
         ];
 
         foreach ($emailTemplates as $tmpl) {
@@ -244,6 +266,24 @@ class NotificationTemplatesSeeder extends Seeder
                 'message_en' => 'Hello {customer_name}, your Grass Florist password reset link: {reset_url} (valid for 60 minutes).',
                 'recipient_type' => 'customer',
                 'allowed_shortcodes' => '{customer_name}, {reset_url}',
+                'is_active' => true,
+            ],
+            [
+                'event_key' => 'account_deactivated',
+                'name' => 'Account Deactivated SMS (رسالة تعطيل الحساب)',
+                'message_ar' => 'مرحباً {customer_name}، تم تعطيل حسابك في غراس فلوريست وإلغاء تسجيل الدخول فوراً. للتواصل والاستفسار: support@grassflorist.com أو 966500000000+',
+                'message_en' => 'Hello {customer_name}, your Grass Florist account has been deactivated and logged out. For support: support@grassflorist.com or +966500000000.',
+                'recipient_type' => 'customer',
+                'allowed_shortcodes' => '{customer_name}, {customer_email}, {reason}',
+                'is_active' => true,
+            ],
+            [
+                'event_key' => 'account_deleted',
+                'name' => 'Account Deleted SMS (رسالة حذف الحساب)',
+                'message_ar' => 'عزيزي {customer_name}، تم حذف حسابك في غراس فلوريست وإبطال تسجيل الدخول فوراً. نسعد دائماً بزيارتكم مجدداً عبر grassflorist.com',
+                'message_en' => 'Dear {customer_name}, your Grass Florist account has been deleted and logged out. We hope to see you again at grassflorist.com!',
+                'recipient_type' => 'customer',
+                'allowed_shortcodes' => '{customer_name}, {customer_email}',
                 'is_active' => true,
             ],
         ];

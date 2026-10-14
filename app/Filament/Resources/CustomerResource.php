@@ -80,7 +80,11 @@ class CustomerResource extends Resource
                 ->label( label: 'Address'),
                 Forms\Components\TextInput::make( name: 'address_2')
                 ->label( label: 'Address 2'),
-
+                Forms\Components\Toggle::make('is_active')
+                    ->label('Active Account')
+                    ->helperText('Deactivating immediately logs out the customer, invalidates all access/refresh tokens, and dispatches SMS/Email notification.')
+                    ->default(true)
+                    ->required(),
                 
                 ])->columns(2),
                 
@@ -112,6 +116,15 @@ class CustomerResource extends Resource
                 Tables\Columns\TextColumn::make('phone')
                     ->sortable()
                     ->searchable(),
+
+                Tables\Columns\IconColumn::make('is_active')
+                    ->label('Active')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-check-circle')
+                    ->falseIcon('heroicon-o-x-circle')
+                    ->trueColor('success')
+                    ->falseColor('danger')
+                    ->sortable(),
 
                 Tables\Columns\TextColumn::make('city')
                     ->sortable()
@@ -156,13 +169,52 @@ class CustomerResource extends Resource
             ])
             
             ->filters([
-                //
+                Tables\Filters\TernaryFilter::make('is_active')
+                    ->label('Account Status')
+                    ->placeholder('All Accounts')
+                    ->trueLabel('Active Only')
+                    ->falseLabel('Deactivated Only'),
             ])
             ->actions([
-                //Tables\Actions\EditAction::make(),
                 Tables\Actions\ActionGroup::make([
                     Tables\Actions\ViewAction::make(),
                     Tables\Actions\EditAction::make(),
+                    Tables\Actions\Action::make('deactivate')
+                        ->label('Deactivate')
+                        ->icon('heroicon-o-no-symbol')
+                        ->color('danger')
+                        ->visible(fn (Customer $record): bool => (bool)$record->is_active)
+                        ->requiresConfirmation()
+                        ->modalHeading('Deactivate Customer Account')
+                        ->modalDescription('Are you sure you want to deactivate this customer account? The customer will be immediately logged out, tokens invalidated, and they will receive an SMS & Email notification.')
+                        ->action(function (Customer $record) {
+                            $record->is_active = false;
+                            $record->save();
+
+                            Notification::make()
+                                ->title('Customer Deactivated')
+                                ->body("Account for {$record->email} deactivated. Tokens invalidated and notification dispatched.")
+                                ->warning()
+                                ->send();
+                        }),
+                    Tables\Actions\Action::make('activate')
+                        ->label('Activate')
+                        ->icon('heroicon-o-check-circle')
+                        ->color('success')
+                        ->visible(fn (Customer $record): bool => !((bool)$record->is_active))
+                        ->requiresConfirmation()
+                        ->modalHeading('Activate Customer Account')
+                        ->modalDescription('Activate this customer account so they can log in again?')
+                        ->action(function (Customer $record) {
+                            $record->is_active = true;
+                            $record->save();
+
+                            Notification::make()
+                                ->title('Customer Activated')
+                                ->body("Account for {$record->email} is now active.")
+                                ->success()
+                                ->send();
+                        }),
                     Tables\Actions\DeleteAction::make(),
                 ]),
 
