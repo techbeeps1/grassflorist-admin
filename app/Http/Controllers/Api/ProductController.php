@@ -106,13 +106,7 @@ class ProductController extends Controller
                 $cSlug = ($locale === 'ar' && filled($c->slug_ar)) ? $c->slug_ar : $c->slug;
                 $formattedCategories[] = [
                     'id' => $c->id,
-                    'name' => [
-                        'ar' => $cNameAr,
-                        'en' => $cNameEn,
-                    ],
-                    'name_ar' => $cNameAr,
-                    'name_en' => $cNameEn,
-                    'name_text' => $cName,
+                    'name' => $cName,
                     'slug' => $cSlug,
                     'slug_en' => $c->slug,
                     'slug_ar' => $c->slug_ar,
@@ -124,13 +118,7 @@ class ProductController extends Controller
 
         return [
             'id' => $product->id,
-            'name' => [
-                'ar' => $nameAr,
-                'en' => $nameEn,
-            ],
-            'name_ar' => $nameAr,
-            'name_en' => $nameEn,
-            'name_text' => $name,
+            'name' => $name,
             'slug' => $slug,
             'slug_ar' => $product->slug_ar ?: $product->slug,
             'slug_en' => $product->slug,
@@ -176,13 +164,7 @@ class ProductController extends Controller
             if (empty($cNameEn)) $cNameEn = $cNameAr;
             return [
                 'id' => $cat->id,
-                'name' => [
-                    'ar' => $cNameAr,
-                    'en' => $cNameEn,
-                ],
-                'name_ar' => $cNameAr,
-                'name_en' => $cNameEn,
-                'name_text' => $locale === 'ar' ? ($cNameAr ?: $cNameEn) : ($cNameEn ?: $cNameAr),
+                'name' => $locale === 'ar' ? ($cNameAr ?: $cNameEn) : ($cNameEn ?: $cNameAr),
                 'slug' => ($locale === 'ar' && filled($cat->slug_ar)) ? $cat->slug_ar : $cat->slug,
                 'slug_ar' => $cat->slug_ar ?: $cat->slug,
                 'slug_en' => $cat->slug,
@@ -208,7 +190,7 @@ class ProductController extends Controller
         $mrp = (float) ($product->mrp ?: $product->price);
         $quantity = (int) $product->quantity;
 
-        // Localized fields
+        // Localized fields according to URL prefix locale
         $nameAr = $product->getTranslation('name', 'ar') ?: (is_array($product->name) ? ($product->name['ar'] ?? '') : (is_string($product->name) ? $product->name : ''));
         $nameEn = $product->getTranslation('name', 'en') ?: (is_array($product->name) ? ($product->name['en'] ?? '') : (is_string($product->name) ? $product->name : ''));
         if (empty($nameAr)) $nameAr = $nameEn;
@@ -228,26 +210,12 @@ class ProductController extends Controller
         return [
             'id' => $product->id,
             'sku' => $product->sku,
-            'name' => [
-                'ar' => $nameAr,
-                'en' => $nameEn,
-            ],
-            'name_ar' => $nameAr,
-            'name_en' => $nameEn,
-            'name_text' => $name,
+            'name' => $name,
             'slug' => $slug,
             'slug_ar' => $product->slug_ar ?: $product->slug,
             'slug_en' => $product->slug,
-            'sub_title' => [
-                'ar' => $subTitleAr,
-                'en' => $subTitleEn,
-            ],
-            'sub_title_text' => $subTitle,
-            'description' => [
-                'ar' => $descriptionAr,
-                'en' => $descriptionEn,
-            ],
-            'description_text' => $description,
+            'sub_title' => $subTitle,
+            'description' => $description,
             'price' => $price,
             'mrp' => $mrp,
             'quantity' => $quantity,

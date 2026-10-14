@@ -84,23 +84,17 @@ class CategoryController extends Controller
         $descAr = $category->getTranslation('description', 'ar') ?: (is_array($category->description) ? ($category->description['ar'] ?? '') : (is_string($category->description) ? $category->description : ''));
         $descEn = $category->getTranslation('description', 'en') ?: (is_array($category->description) ? ($category->description['en'] ?? '') : (is_string($category->description) ? $category->description : ''));
 
+        $cName = $locale === 'ar' ? ($nameAr ?: $nameEn) : ($nameEn ?: $nameAr);
+        $cSlug = ($locale === 'ar' && filled($category->slug_ar)) ? $category->slug_ar : $category->slug;
+        $cDesc = $locale === 'ar' ? ($descAr ?: $descEn) : ($descEn ?: $descAr);
+
         return [
             'id' => $category->id,
-            'name' => [
-                'ar' => $nameAr,
-                'en' => $nameEn,
-            ],
-            'name_ar' => $nameAr,
-            'name_en' => $nameEn,
-            'name_text' => $locale === 'ar' ? ($nameAr ?: $nameEn) : ($nameEn ?: $nameAr),
-            'slug' => ($locale === 'ar' && filled($category->slug_ar)) ? $category->slug_ar : $category->slug,
+            'name' => $cName,
+            'slug' => $cSlug,
             'slug_ar' => $category->slug_ar ?: $category->slug,
             'slug_en' => $category->slug,
-            'description' => [
-                'ar' => $descAr,
-                'en' => $descEn,
-            ],
-            'description_text' => $locale === 'ar' ? ($descAr ?: $descEn) : ($descEn ?: $descAr),
+            'description' => $cDesc,
             'image' => $catImgUrl ?: $catImg,
             'image_path' => $catImg,
             'is_visible' => (bool) $category->is_visible,
