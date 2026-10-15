@@ -25,6 +25,82 @@ class MenuController extends Controller
         $footerItems = $footerMenu ? ($footerMenu->items ?? []) : [];
         $footerSettings = $footerMenu ? ($footerMenu->settings ?? []) : [];
 
+        // Build set of all invisible categories (by id and slug)
+        $invisibleCategories = Category::where('is_visible', false)->get(['id', 'slug', 'slug_ar']);
+        $invisibleSlugs = [];
+        foreach ($invisibleCategories as $invCat) {
+            if ($invCat->slug) $invisibleSlugs[strtolower($invCat->slug)] = true;
+            if ($invCat->slug_ar) $invisibleSlugs[strtolower($invCat->slug_ar)] = true;
+            $invisibleSlugs['category/' . strtolower($invCat->slug)] = true;
+            if ($invCat->slug_ar) $invisibleSlugs['category/' . strtolower($invCat->slug_ar)] = true;
+            $invisibleSlugs[(string)$invCat->id] = true;
+        }
+
+        $isUrlInvisible = function ($url, $id = null) use ($invisibleSlugs) {
+            if ($id && isset($invisibleSlugs[strtolower((string)$id)])) {
+                return true;
+            }
+            if (!empty($url)) {
+                $cleaned = strtolower(trim($url, '/'));
+                if (str_starts_with($cleaned, 'en/')) {
+                    $cleaned = substr($cleaned, 3);
+                }
+                if (isset($invisibleSlugs[$cleaned])) {
+                    return true;
+                }
+                if (str_starts_with($cleaned, 'category/')) {
+                    $slugPart = substr($cleaned, 9);
+                    if (isset($invisibleSlugs[$slugPart])) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+
+        // Filter out hidden categories from header menu
+        $filteredHeaderItems = [];
+        foreach ($headerItems as $item) {
+            $urlEn = $item['url_en'] ?? ($item['href']['en'] ?? '');
+            $urlAr = $item['url_ar'] ?? ($item['href']['ar'] ?? '');
+            $itemId = $item['id'] ?? '';
+
+            if ($isUrlInvisible($urlEn, $itemId) || $isUrlInvisible($urlAr, $itemId)) {
+                continue;
+            }
+
+            // Filter subcategories
+            if (!empty($item['subcategories']) && is_array($item['subcategories'])) {
+                $filteredSubs = [];
+                foreach ($item['subcategories'] as $sub) {
+                    $subUrlEn = $sub['url_en'] ?? ($sub['href']['en'] ?? '');
+                    $subUrlAr = $sub['url_ar'] ?? ($sub['href']['ar'] ?? '');
+                    $subId = $sub['id'] ?? '';
+                    if ($isUrlInvisible($subUrlEn, $subId) || $isUrlInvisible($subUrlAr, $subId)) {
+                        continue;
+                    }
+
+                    // Filter children
+                    if (!empty($sub['children']) && is_array($sub['children'])) {
+                        $sub['children'] = array_values(array_filter($sub['children'], function ($child) use ($isUrlInvisible) {
+                            $childUrlEn = $child['url_en'] ?? ($child['href']['en'] ?? '');
+                            $childUrlAr = $child['url_ar'] ?? ($child['href']['ar'] ?? '');
+                            $childId = $child['id'] ?? '';
+                            return ! $isUrlInvisible($childUrlEn, $childId) && ! $isUrlInvisible($childUrlAr, $childId);
+                        }));
+                    }
+
+                    $filteredSubs[] = $sub;
+                }
+                $item['subcategories'] = array_values($filteredSubs);
+                if (empty($item['subcategories']) && ($item['dropdown_type'] ?? '') !== 'mega') {
+                    $item['has_dropdown'] = false;
+                }
+            }
+
+            $filteredHeaderItems[] = $item;
+        }
+
         // Enrich header mega menu items with dynamic category products if requested
         $processedHeaderItems = array_map(function ($item) {
             $dropdownType = $item['dropdown_type'] ?? 'simple';
@@ -100,7 +176,7 @@ class MenuController extends Controller
             }
 
             return $item;
-        }, $headerItems);
+        }, $filteredHeaderItems);
 
         // Process Footer Column 1 Categories if set to auto 'categories'
         if (isset($footerItems['column_1']['source']) && $footerItems['column_1']['source'] === 'categories') {
@@ -199,23 +275,24 @@ class MenuController extends Controller
      */
     public function getMenuItems($menuName)
     {
+        $navigation = $this->getNavigation(request());
+        $navData = $navigation->getData(true);
+
         if ($menuName === 'header') {
-            $menu = Menu::where('slug', 'header')->first();
             return response()->json([
                 'success' => true,
-                'items' => $menu ? ($menu->items ?? []) : [],
+                'items' => $navData['header'] ?? [],
             ]);
         }
 
         if ($menuName === 'footer') {
-            $menu = Menu::where('slug', 'footer')->first();
             return response()->json([
                 'success' => true,
-                'items' => $menu ? ($menu->items ?? []) : [],
-                'settings' => $menu ? ($menu->settings ?? []) : [],
+                'items' => $navData['footer'] ?? [],
+                'settings' => $navData['footer_settings'] ?? [],
             ]);
         }
 
-        return $this->getNavigation(request());
+        return $navigation;
     }
 }

@@ -127,6 +127,27 @@ class CartController extends Controller
                 }
             }
 
+            // Parse category_id into an array of integers
+            $catIds = [];
+            if (!empty($item->category_id)) {
+                if (is_array($item->category_id)) {
+                    $catIds = array_map('intval', $item->category_id);
+                } elseif (is_string($item->category_id)) {
+                    $trimmedCat = trim($item->category_id);
+                    if (str_starts_with($trimmedCat, '[') || str_starts_with($trimmedCat, '{')) {
+                        $decoded = json_decode($trimmedCat, true);
+                        if (is_array($decoded)) {
+                            $catIds = array_map('intval', $decoded);
+                        }
+                    } elseif (is_numeric($trimmedCat)) {
+                        $catIds = [(int) $trimmedCat];
+                    }
+                } elseif (is_numeric($item->category_id)) {
+                    $catIds = [(int) $item->category_id];
+                }
+            }
+            $item->category_ids = array_values(array_filter($catIds));
+
             // Format full image URL
             if (!empty($item->image)) {
                 $rawImg = (string) $item->image;

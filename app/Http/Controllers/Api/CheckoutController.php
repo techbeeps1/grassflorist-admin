@@ -164,6 +164,81 @@ class CheckoutController extends Controller
             }
         }
 
+        // 🛑 Restricted Categories Check (Single Buy Restriction)
+        $globalSetting = \App\Models\GlobalSetting::current();
+        if ($globalSetting && (bool)($globalSetting->restricted_categories_enabled ?? false)) {
+            $restrictedCategoryIds = array_values(array_filter(array_map('intval', (array)($globalSetting->restricted_category_ids ?? []))));
+            $qualifyingCategoryIds = array_values(array_filter(array_map('intval', (array)($globalSetting->qualifying_category_ids ?? []))));
+
+            if (!empty($restrictedCategoryIds)) {
+                $hasRestricted = false;
+                $hasQualifying = false;
+
+                foreach ($cartItems as $item) {
+                    $prod = $item->product;
+                    if (!$prod) continue;
+
+                    $prodCatIds = [];
+                    $rawCat = $prod->category_id;
+                    if (is_array($rawCat)) {
+                        $prodCatIds = array_map('intval', $rawCat);
+                    } elseif (is_string($rawCat)) {
+                        $trimmedCat = trim($rawCat);
+                        if (str_starts_with($trimmedCat, '[') || str_starts_with($trimmedCat, '{')) {
+                            $decoded = json_decode($trimmedCat, true);
+                            if (is_array($decoded)) {
+                                $prodCatIds = array_map('intval', $decoded);
+                            }
+                        } elseif (is_numeric($trimmedCat)) {
+                            $prodCatIds = [(int) $trimmedCat];
+                        }
+                    } elseif (is_numeric($rawCat)) {
+                        $prodCatIds = [(int) $rawCat];
+                    }
+
+                    // Check if this item is a subscription item
+                    $itemMeta = is_string($item->meta_data) ? json_decode($item->meta_data, true) : (is_array($item->meta_data) ? $item->meta_data : []);
+                    $isSub = !empty($itemMeta['is_subscription']);
+                    if ($isSub) {
+                        $hasQualifying = true;
+                    }
+
+                    // Check qualifying categories
+                    if (!empty($qualifyingCategoryIds)) {
+                        if (count(array_intersect($prodCatIds, $qualifyingCategoryIds)) > 0) {
+                            $hasQualifying = true;
+                        }
+                    } else {
+                        // Any item not in restricted categories qualifies
+                        if (count(array_intersect($prodCatIds, $restrictedCategoryIds)) === 0) {
+                            $hasQualifying = true;
+                        }
+                    }
+
+                    // Check restricted categories
+                    if (count(array_intersect($prodCatIds, $restrictedCategoryIds)) > 0) {
+                        // Only count as restricted if it doesn't also belong to a qualifying category
+                        if (empty($qualifyingCategoryIds) || count(array_intersect($prodCatIds, $qualifyingCategoryIds)) === 0) {
+                            $hasRestricted = true;
+                        }
+                    }
+                }
+
+                if ($hasRestricted && !$hasQualifying) {
+                    $locale = $request->input('locale', $request->input('order_language', 'ar'));
+                    $msgEn = $globalSetting->restricted_categories_message_en ?: 'You must add at least one flower product to your cart before adding cake, chocolates, or balloons.';
+                    $msgAr = $globalSetting->restricted_categories_message_ar ?: 'يجب إضافة منتج زهور واحد على الأقل إلى سلتك قبل إضافة الكيك أو الشوكولاتة أو البالونات.';
+                    $errorMsg = ($locale === 'en') ? $msgEn : $msgAr;
+
+                    return response()->json([
+                        'message' => $errorMsg,
+                        'error' => 'Restricted categories purchase rule violation',
+                        'restricted_rule_violated' => true,
+                    ], 422);
+                }
+            }
+        }
+
         // Calculate subtotal
         $subtotal = $cartItems->sum(function ($item) {
             return $item->price * $item->quantity;

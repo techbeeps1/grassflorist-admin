@@ -58,7 +58,11 @@ class CategoryController extends Controller
 
         $children = [];
         if ($category->relationLoaded('child') && $category->child->isNotEmpty()) {
-            $children = $category->child->map(fn ($c) => $this->formatCategory($c, $locale))->values()->toArray();
+            $children = $category->child
+                ->filter(fn ($c) => (bool) $c->is_visible)
+                ->map(fn ($c) => $this->formatCategory($c, $locale))
+                ->values()
+                ->toArray();
         }
 
         $nameAr = $category->getTranslation('name', 'ar');
@@ -106,7 +110,9 @@ class CategoryController extends Controller
     {
         $locale = $this->getLocale($request);
 
-        $categories = Category::with('child')
+        $categories = Category::with(['child' => function ($q) {
+            $q->where('is_visible', true);
+        }])
             ->whereNull('parent_id')
             ->where('is_visible', true)
             ->get();

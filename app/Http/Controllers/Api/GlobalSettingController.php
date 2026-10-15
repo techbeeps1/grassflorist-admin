@@ -58,6 +58,15 @@ class GlobalSettingController extends Controller
                     'category_ids' => array_values(array_map('intval', (array) ($setting->cart_upsell_category_ids ?? [30, 29, 39, 43, 46]))),
                     'limit_per_category' => (int) ($setting->cart_upsell_limit_per_category ?? 10),
                 ],
+                'restricted_categories' => [
+                    'enabled' => (bool) ($setting->restricted_categories_enabled ?? false),
+                    'restricted_category_ids' => array_values(array_filter(array_map('intval', (array) ($setting->restricted_category_ids ?? [])))),
+                    'qualifying_category_ids' => array_values(array_filter(array_map('intval', (array) ($setting->qualifying_category_ids ?? [])))),
+                    'message' => [
+                        'en' => $setting->restricted_categories_message_en ?: 'You must add at least one flower product to your cart before adding cake, chocolates, or balloons.',
+                        'ar' => $setting->restricted_categories_message_ar ?: 'يجب إضافة منتج زهور واحد على الأقل إلى سلتك قبل إضافة الكيك أو الشوكولاتة أو البالونات.',
+                    ],
+                ],
                 'branding' => [
                     'site_name' => [
                         'en' => $setting->site_name_en ?: $setting->site_name ?: 'Grass Florist',

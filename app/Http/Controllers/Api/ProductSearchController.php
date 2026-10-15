@@ -87,11 +87,21 @@ class ProductSearchController extends Controller
 
         // 2. Category filter
         if ($request->filled('category')) {
-            $category = $request->input('category');
-            $query->where(function ($q) use ($category) {
-                $q->whereJsonContains('category_id', (string) $category)
-                  ->orWhereJsonContains('category_id', (int) $category);
-            });
+            $catParam = $request->input('category');
+            $targetCategory = is_numeric($catParam)
+                ? Category::find($catParam)
+                : Category::where('slug', $catParam)->orWhere('slug_ar', $catParam)->first();
+
+            if ($targetCategory && ! $targetCategory->is_visible) {
+                // Return empty result set since the requested category is hidden
+                $query->whereRaw('1 = 0');
+            } else {
+                $category = $targetCategory ? $targetCategory->id : $catParam;
+                $query->where(function ($q) use ($category) {
+                    $q->whereJsonContains('category_id', (string) $category)
+                      ->orWhereJsonContains('category_id', (int) $category);
+                });
+            }
         }
 
         // 3. Price range

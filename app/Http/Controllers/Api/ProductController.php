@@ -86,10 +86,10 @@ class ProductController extends Controller
             ? $product->category_id
             : (json_decode($product->category_id, true) ?: []);
 
-        // Fast in-memory cache for all categories to prevent N+1 queries
+        // Fast in-memory cache for all visible categories to prevent N+1 queries
         static $categoriesCache = null;
         if ($categoriesCache === null) {
-            $categoriesCache = Category::all()->keyBy('id');
+            $categoriesCache = Category::where('is_visible', true)->get()->keyBy('id');
         }
 
         $formattedCategories = [];
@@ -150,7 +150,7 @@ class ProductController extends Controller
             ? $product->category_id
             : (json_decode($product->category_id, true) ?: []);
 
-        $categories = Category::whereIn('id', (array) $categoryIds)->get();
+        $categories = Category::where('is_visible', true)->whereIn('id', (array) $categoryIds)->get();
 
         $formattedCategories = $categories->map(function ($cat) use ($locale) {
             $catImg = $cat->cat_image;
@@ -261,14 +261,19 @@ class ProductController extends Controller
         $locale = $this->getLocale($request);
         $decodedSlug = urldecode($slug);
 
+        $isNumeric = ctype_digit((string) $slug) || ctype_digit((string) $decodedSlug);
+
         $product = Product::visibleToCustomers()
-            ->where(function ($q) use ($slug, $decodedSlug) {
+            ->where(function ($q) use ($slug, $decodedSlug, $isNumeric) {
                 $q->where('slug', $slug)
                   ->orWhere('slug_ar', $slug)
                   ->orWhere('slug', $decodedSlug)
                   ->orWhere('slug_ar', $decodedSlug)
-                  ->orWhere('sku', $slug)
-                  ->orWhere('id', $slug);
+                  ->orWhere('sku', $slug);
+
+                if ($isNumeric) {
+                    $q->orWhere('id', (int) $slug);
+                }
             })
             ->first();
 
@@ -318,10 +323,12 @@ class ProductController extends Controller
             $locale = $this->getLocale($request);
             $decodedSlug = urldecode($slug);
 
-            $category = Category::where('slug', $slug)
-                ->orWhere('slug_ar', $slug)
-                ->orWhere('slug', $decodedSlug)
-                ->orWhere('slug_ar', $decodedSlug)
+            $category = Category::where(function ($q) use ($slug, $decodedSlug) {
+                    $q->where('slug', $slug)
+                        ->orWhere('slug_ar', $slug)
+                        ->orWhere('slug', $decodedSlug)
+                        ->orWhere('slug_ar', $decodedSlug);
+                })
                 ->first();
 
             // Alias fallback (e.g. occasions <-> ocassions)
@@ -333,15 +340,26 @@ class ProductController extends Controller
                 }
             }
 
-            if (! $category) {
+            if (! $category || ! $category->is_visible) {
                 return response()->json([
                     'error' => 'Category not found',
                 ], 404);
             }
 
+            // Also check if its parent is invisible
+            if ($category->parent_id) {
+                $parent = Category::find($category->parent_id);
+                if ($parent && ! $parent->is_visible) {
+                    return response()->json([
+                        'error' => 'Category not found',
+                    ], 404);
+                }
+            }
+
             $catIds = [$category->id];
             if ($category->child()->exists()) {
-                $catIds = array_merge($catIds, $category->child()->pluck('id')->toArray());
+                $visibleChildIds = $category->child()->where('is_visible', true)->pluck('id')->toArray();
+                $catIds = array_merge($catIds, $visibleChildIds);
             }
 
             $products = Product::visibleToCustomers()

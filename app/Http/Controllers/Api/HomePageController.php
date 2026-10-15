@@ -154,7 +154,8 @@ class HomePageController extends Controller
         // 1. Popular Categories
         $popularIds = $this->parseIds($homePage->popular_category);
         $popularCategories = !empty($popularIds)
-            ? Category::whereIn('id', $popularIds)
+            ? Category::where('is_visible', true)
+                ->whereIn('id', $popularIds)
                 ->orderByRaw('FIELD(id, ' . implode(',', $popularIds) . ')')
                 ->get()
                 ->map(fn ($cat) => $this->formatCategory($cat, $locale))
@@ -185,7 +186,7 @@ class HomePageController extends Controller
                 if ($catId <= 0) continue;
 
                 $category = Category::find($catId);
-                if (!$category) continue;
+                if (!$category || ! $category->is_visible) continue;
 
                 $catIds = [$catId];
                 if ($category->child()->exists()) {

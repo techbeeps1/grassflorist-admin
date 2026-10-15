@@ -24,6 +24,9 @@ class GlobalSetting extends Model
         'cart_upsell_enabled' => 'boolean',
         'cart_upsell_category_ids' => 'array',
         'cart_upsell_limit_per_category' => 'integer',
+        'restricted_categories_enabled' => 'boolean',
+        'restricted_category_ids' => 'array',
+        'qualifying_category_ids' => 'array',
     ];
 
     protected $appends = [

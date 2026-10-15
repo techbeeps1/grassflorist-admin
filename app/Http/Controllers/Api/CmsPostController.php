@@ -149,12 +149,16 @@ class CmsPostController extends Controller
     public function showBySlug(Request $request, string $slug): JsonResponse
     {
         $locale = $this->getLocale($request);
+        $isNumeric = ctype_digit((string) $slug);
         $post = CmsPost::where('is_active', true)
             ->with('category')
-            ->where(function ($q) use ($slug) {
+            ->where(function ($q) use ($slug, $isNumeric) {
                 $q->where('slug', $slug)
-                  ->orWhere('slug_ar', $slug)
-                  ->orWhere('id', $slug);
+                  ->orWhere('slug_ar', $slug);
+
+                if ($isNumeric) {
+                    $q->orWhere('id', (int) $slug);
+                }
             })->first();
 
         if (! $post) {

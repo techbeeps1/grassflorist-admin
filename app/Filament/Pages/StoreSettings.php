@@ -59,6 +59,13 @@ class StoreSettings extends Page implements HasForms
             'cart_upsell_title_ar' => $settings->cart_upsell_title_ar ?? 'اجعلها مثالية',
             'cart_upsell_category_ids' => $settings->cart_upsell_category_ids ?? [],
             'cart_upsell_limit_per_category' => $settings->cart_upsell_limit_per_category ?? 10,
+
+            // Restricted Categories (Single Buy Restriction)
+            'restricted_categories_enabled' => (bool) ($settings->restricted_categories_enabled ?? true),
+            'restricted_category_ids' => $settings->restricted_category_ids ?? [],
+            'qualifying_category_ids' => $settings->qualifying_category_ids ?? [],
+            'restricted_categories_message_en' => $settings->restricted_categories_message_en ?? 'You must add at least one flower product to your cart before adding cake, chocolates, or balloons.',
+            'restricted_categories_message_ar' => $settings->restricted_categories_message_ar ?? 'يجب إضافة منتج زهور واحد على الأقل إلى سلتك قبل إضافة الكيك أو الشوكولاتة أو البالونات.',
         ]);
     }
 
@@ -231,6 +238,81 @@ class StoreSettings extends Page implements HasForms
                             ->schema([
                                 View::make('filament.pages.store-settings-shipping-tab'),
                             ]),
+
+                        // =========================================================================
+                        // TAB 4: RESTRICTED CATEGORIES (SINGLE BUY RESTRICTION)
+                        // =========================================================================
+                        Tabs\Tab::make('Restricted Categories')
+                            ->icon('heroicon-o-shield-exclamation')
+                            ->badge('Single Buy Restriction')
+                            ->schema([
+                                Section::make('Category Single Purchase Restriction')
+                                    ->description('Configure categories that cannot be bought alone without a main/qualifying product in the cart (e.g. Add-on items like Cakes, Chocolates, Balloons).')
+                                    ->schema([
+                                        Toggle::make('restricted_categories_enabled')
+                                            ->label('Enable Single Buy Restriction')
+                                            ->helperText('When enabled, customers cannot place an order or checkout if their cart contains ONLY restricted items without any qualifying product.')
+                                            ->default(true)
+                                            ->columnSpanFull(),
+
+                                        Select::make('restricted_category_ids')
+                                            ->label('Restricted Categories (Cannot Be Purchased Alone)')
+                                            ->helperText('Products belonging to these categories will require at least one qualifying product in the cart.')
+                                            ->multiple()
+                                            ->searchable()
+                                            ->preload()
+                                            ->options(function () {
+                                                return Category::query()
+                                                    ->orderBy('id', 'asc')
+                                                    ->get()
+                                                    ->mapWithKeys(function ($cat) {
+                                                        $name = $cat->name;
+                                                        $en = is_array($name) ? ($name['en'] ?? '') : (is_string($name) ? $name : '');
+                                                        $ar = is_array($name) ? ($name['ar'] ?? '') : '';
+                                                        $label = ($en ? $en : '') . ($ar ? " ({$ar})" : '') . " [ID: {$cat->id}]";
+                                                        return [$cat->id => $label];
+                                                    })
+                                                    ->toArray();
+                                            })
+                                            ->columnSpanFull(),
+
+                                        Select::make('qualifying_category_ids')
+                                            ->label('Qualifying / Main Categories (Optional)')
+                                            ->helperText('Categories that qualify the cart (e.g. Flowers, Bouquets). If left empty, ANY category outside the restricted list will automatically qualify the cart.')
+                                            ->multiple()
+                                            ->searchable()
+                                            ->preload()
+                                            ->options(function () {
+                                                return Category::query()
+                                                    ->orderBy('id', 'asc')
+                                                    ->get()
+                                                    ->mapWithKeys(function ($cat) {
+                                                        $name = $cat->name;
+                                                        $en = is_array($name) ? ($name['en'] ?? '') : (is_string($name) ? $name : '');
+                                                        $ar = is_array($name) ? ($name['ar'] ?? '') : '';
+                                                        $label = ($en ? $en : '') . ($ar ? " ({$ar})" : '') . " [ID: {$cat->id}]";
+                                                        return [$cat->id => $label];
+                                                    })
+                                                    ->toArray();
+                                            })
+                                            ->columnSpanFull(),
+
+                                        TextInput::make('restricted_categories_message_en')
+                                            ->label('Restriction Warning Message (English)')
+                                            ->default('You must add at least one flower product to your cart before adding cake, chocolates, or balloons.')
+                                            ->placeholder('You must add at least one flower product to your cart before adding cake, chocolates, or balloons.')
+                                            ->helperText('Message shown in English when a customer tries to checkout with only restricted products.')
+                                            ->columnSpanFull(),
+
+                                        TextInput::make('restricted_categories_message_ar')
+                                            ->label('Restriction Warning Message (Arabic)')
+                                            ->default('يجب إضافة منتج زهور واحد على الأقل إلى سلتك قبل إضافة الكيك أو الشوكولاتة أو البالونات.')
+                                            ->placeholder('يجب إضافة منتج زهور واحد على الأقل إلى سلتك قبل إضافة الكيك أو الشوكولاتة أو البالونات.')
+                                            ->helperText('Message shown in Arabic when a customer tries to checkout with only restricted products.')
+                                            ->columnSpanFull(),
+                                    ])
+                                    ->columns(1),
+                            ]),
                     ])
                     ->columnSpanFull(),
             ])
@@ -265,11 +347,18 @@ class StoreSettings extends Page implements HasForms
             'cart_upsell_title_ar' => $data['cart_upsell_title_ar'] ?? 'اجعلها مثالية',
             'cart_upsell_category_ids' => $data['cart_upsell_category_ids'] ?? [],
             'cart_upsell_limit_per_category' => (int) ($data['cart_upsell_limit_per_category'] ?? 10),
+
+            // Restricted Categories (Single Buy Restriction)
+            'restricted_categories_enabled' => (bool) ($data['restricted_categories_enabled'] ?? false),
+            'restricted_category_ids' => $data['restricted_category_ids'] ?? [],
+            'qualifying_category_ids' => $data['qualifying_category_ids'] ?? [],
+            'restricted_categories_message_en' => $data['restricted_categories_message_en'] ?? null,
+            'restricted_categories_message_ar' => $data['restricted_categories_message_ar'] ?? null,
         ]);
 
         Notification::make()
             ->title('Store Settings Saved')
-            ->body('Store settings (Tax, currency, and cart upsell) updated successfully.')
+            ->body('Store settings (Tax, currency, cart upsell, and category restrictions) updated successfully.')
             ->success()
             ->send();
     }

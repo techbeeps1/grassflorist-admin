@@ -18,7 +18,7 @@ class SitemapController extends Controller
         return response()->json([
             'pages' => $this->sitemapItems(CmsPage::where('is_active', 1)),
             'products' => $this->sitemapItems(Product::visibleToCustomers(), '/products'),
-            'product_categories' => $this->sitemapItems(Category::class, '/category'),
+            'product_categories' => $this->sitemapItems(Category::where('is_visible', true), '/category'),
             'posts' => $this->sitemapItems(CmsPost::where('is_active', 1), '/blog'),
             'post_categories' => $this->sitemapItems(CmsCategory::class, '/blog/category'),
             'publications' => $this->sitemapItems(Production::where('is_visible', 1), '/publisher'),
