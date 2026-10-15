@@ -84,7 +84,15 @@ class EditProduct extends EditRecord
 
         return $data;
     }
-   
+
+    protected function afterSave(): void
+    {
+        $rawState = $this->form->getRawState();
+        if (isset($rawState['product_attributes']) && is_array($rawState['product_attributes'])) {
+            $this->record->syncAttributes($rawState['product_attributes']);
+        }
+    }
+
     public function getHeading(): string
 {
     return 'Product';

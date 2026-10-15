@@ -216,10 +216,140 @@ class ProductResource extends Resource
                                         if (str_starts_with($cleanBase, "{$slug}-")) {
                                             return "{$cleanBase}.{$ext}";
                                         }
-                                        return "{$slug}-{$cleanBase}.{$ext}";
                                     }),
                             ]),
+
+                        Forms\Components\Section::make('Product Attributes & Filter Options')
+                            ->icon('heroicon-o-swatch')
+                            ->description('Assign custom filter attributes (e.g. Color, Flower Type, Occasion). You can select existing attributes and values, or create new ones on the fly.')
+                            ->schema([
+                                Forms\Components\Repeater::make('product_attributes')
+                                    ->label('Attributes')
+                                    ->schema([
+                                        Forms\Components\Grid::make(12)->schema([
+                                            Select::make('attribute_id')
+                                                ->label('Attribute')
+                                                ->placeholder('Choose attribute...')
+                                                ->options(function () {
+                                                    return \App\Models\Attribute::all()->mapWithKeys(function ($attr) {
+                                                        $name = format_translatable($attr->name, 'en') ?: $attr->slug;
+                                                        return [$attr->id => $name];
+                                                    })->toArray();
+                                                })
+                                                ->required()
+                                                ->live()
+                                                ->searchable()
+                                                ->preload()
+                                                ->createOptionForm([
+                                                    Forms\Components\Grid::make(2)->schema([
+                                                        TextInput::make('name.en')
+                                                            ->label('Attribute Name (EN)')
+                                                            ->required()
+                                                            ->live(onBlur: true)
+                                                            ->afterStateUpdated(fn ($state, Forms\Set $set) => $set('slug', Str::slug($state))),
+                                                        TextInput::make('name.ar')
+                                                            ->label('Attribute Name (AR)')
+                                                            ->extraInputAttributes(['dir' => 'rtl'])
+                                                            ->required(),
+                                                        TextInput::make('slug')
+                                                            ->label('Slug')
+                                                            ->required(),
+                                                        Select::make('type')
+                                                            ->label('Display Type')
+                                                            ->options([
+                                                                'color' => 'Color Swatch (Visual Circles)',
+                                                                'select' => 'Checkbox / Button List',
+                                                            ])
+                                                            ->default('select')
+                                                            ->required(),
+                                                    ]),
+                                                ])
+                                                ->createOptionUsing(function (array $data): int {
+                                                    $attr = \App\Models\Attribute::create([
+                                                        'name' => $data['name'],
+                                                        'slug' => $data['slug'],
+                                                        'type' => $data['type'] ?? 'select',
+                                                        'is_filterable' => true,
+                                                    ]);
+                                                    return $attr->id;
+                                                })
+                                                ->columnSpan(4),
+
+                                            Select::make('value_ids')
+                                                ->label('Values / Options')
+                                                ->placeholder('Select one or more values...')
+                                                ->multiple()
+                                                ->searchable()
+                                                ->preload()
+                                                ->options(function (Forms\Get $get) {
+                                                    $attrId = $get('attribute_id');
+                                                    if (!$attrId) return [];
+                                                    return \App\Models\AttributeValue::where('attribute_id', $attrId)->get()->mapWithKeys(function ($v) {
+                                                        $en = format_translatable($v->value, 'en') ?: $v->slug;
+                                                        $ar = format_translatable($v->value, 'ar');
+                                                        $label = $en . ($ar ? " ({$ar})" : '') . ($v->color_code ? " [{$v->color_code}]" : '');
+                                                        return [$v->id => $label];
+                                                    })->toArray();
+                                                })
+                                                ->createOptionForm([
+                                                    Forms\Components\Grid::make(2)->schema([
+                                                        TextInput::make('value.en')
+                                                            ->label('Value Name (EN)')
+                                                            ->required()
+                                                            ->live(onBlur: true)
+                                                            ->afterStateUpdated(fn ($state, Forms\Set $set) => $set('slug', Str::slug($state))),
+                                                        TextInput::make('value.ar')
+                                                            ->label('Value Name (AR)')
+                                                            ->extraInputAttributes(['dir' => 'rtl'])
+                                                            ->required(),
+                                                        TextInput::make('slug')
+                                                            ->label('Slug')
+                                                            ->required(),
+                                                        Forms\Components\ColorPicker::make('color_code')
+                                                            ->label('Color Swatch')
+                                                            ->nullable(),
+                                                    ]),
+                                                ])
+                                                ->createOptionUsing(function (array $data, Forms\Get $get): int {
+                                                    $attrId = $get('attribute_id');
+                                                    $val = \App\Models\AttributeValue::create([
+                                                        'attribute_id' => $attrId,
+                                                        'value' => $data['value'],
+                                                        'slug' => $data['slug'],
+                                                        'color_code' => $data['color_code'] ?? null,
+                                                    ]);
+                                                    return $val->id;
+                                                })
+                                                ->required()
+                                                ->columnSpan(8),
+                                        ]),
+                                    ])
+                                    ->defaultItems(0)
+                                    ->addActionLabel('+ Add Attribute to Product')
+                                    ->afterStateHydrated(function ($component, ?Product $record) {
+                                        if (!$record) return;
+                                        $pivot = \Illuminate\Support\Facades\DB::table('product_attribute_value')
+                                            ->where('product_id', $record->id)
+                                            ->get();
+
+                                        $grouped = [];
+                                        foreach ($pivot as $row) {
+                                            $grouped[$row->attribute_id][] = $row->attribute_value_id;
+                                        }
+
+                                        $items = [];
+                                        foreach ($grouped as $attrId => $vids) {
+                                            $items[] = [
+                                                'attribute_id' => $attrId,
+                                                'value_ids' => $vids,
+                                            ];
+                                        }
+                                        $component->state($items);
+                                    })
+                                    ->dehydrated(false),
+                            ]),
                     ])->columnSpan(2),
+
 
                     // Right Column (1 span)
                     Forms\Components\Group::make()->schema([

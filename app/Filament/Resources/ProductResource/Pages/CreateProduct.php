@@ -41,10 +41,19 @@ class CreateProduct extends CreateRecord
         return $data;
     }
     
+    protected function afterCreate(): void
+    {
+        $rawState = $this->form->getRawState();
+        if (isset($rawState['product_attributes']) && is_array($rawState['product_attributes'])) {
+            $this->record->syncAttributes($rawState['product_attributes']);
+        }
+    }
+
     protected function getRedirectUrl(): string
     {
         return ProductResource::getUrl('edit', [
             'record' => $this->record,
         ]);
     }
+
 }

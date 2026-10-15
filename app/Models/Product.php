@@ -110,6 +110,44 @@ class Product extends Model
         return $this->belongsToMany(Category::class);
     }
 
+    public function attributeValues(): BelongsToMany
+    {
+        return $this->belongsToMany(AttributeValue::class, 'product_attribute_value');
+    }
+
+    public function attributes(): BelongsToMany
+    {
+        return $this->belongsToMany(Attribute::class, 'product_attribute_value');
+    }
+
+    /**
+     * Sync product attributes and values from admin repeater.
+     */
+    public function syncAttributes(array $productAttributes): void
+    {
+        $rows = [];
+        foreach ($productAttributes as $item) {
+            $attrId = $item['attribute_id'] ?? null;
+            $valIds = (array) ($item['value_ids'] ?? []);
+            if (!$attrId) continue;
+            foreach ($valIds as $vid) {
+                if (!$vid) continue;
+                $rows[] = [
+                    'product_id' => $this->id,
+                    'attribute_id' => (int) $attrId,
+                    'attribute_value_id' => (int) $vid,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
+        }
+        \Illuminate\Support\Facades\DB::table('product_attribute_value')->where('product_id', $this->id)->delete();
+        if (!empty($rows)) {
+            \Illuminate\Support\Facades\DB::table('product_attribute_value')->insertOrIgnore($rows);
+        }
+    }
+
+
     // Order Items Relationship
     public function orderItems()
     {

@@ -138,8 +138,49 @@ class ProductController extends Controller
             'subscription_frequencies' => $product->subscription_frequencies ?? ['weekly', 'biweekly', 'monthly'],
             'subscription_durations' => $product->subscription_durations ?? ['3_months', '6_months', '12_months', 'until_cancelled'],
             'subscription_min_duration' => $product->subscription_min_duration ?? '3_months',
+            'attributes' => $this->formatProductAttributes($product, $locale),
         ];
     }
+
+    /**
+     * Format attributes assigned to a product into clean structured JSON.
+     */
+    public function formatProductAttributes(Product $product, string $locale = 'ar'): array
+    {
+        if (!$product->relationLoaded('attributeValues')) {
+            $product->load(['attributeValues.attribute']);
+        }
+
+        $formatted = [];
+        $grouped = $product->attributeValues->groupBy('attribute_id');
+        foreach ($grouped as $vals) {
+            $first = $vals->first();
+            $attr = $first?->attribute;
+            if (!$attr) continue;
+            $attrName = $attr->getTranslation('name', $locale) ?: (is_array($attr->name) ? ($attr->name[$locale] ?? reset($attr->name)) : $attr->name);
+            $formatted[] = [
+                'id' => $attr->id,
+                'name' => $attrName,
+                'name_en' => $attr->getTranslation('name', 'en'),
+                'name_ar' => $attr->getTranslation('name', 'ar'),
+                'slug' => $attr->slug,
+                'type' => $attr->type,
+                'values' => $vals->map(function ($v) use ($locale) {
+                    $vName = $v->getTranslation('value', $locale) ?: (is_array($v->value) ? ($v->value[$locale] ?? reset($v->value)) : $v->value);
+                    return [
+                        'id' => $v->id,
+                        'name' => $vName,
+                        'name_en' => $v->getTranslation('value', 'en'),
+                        'name_ar' => $v->getTranslation('value', 'ar'),
+                        'slug' => $v->slug,
+                        'color_code' => $v->color_code,
+                    ];
+                })->values()->toArray(),
+            ];
+        }
+        return $formatted;
+    }
+
 
     /**
      * Format a product instance to clean, detailed storefront JSON (excluding bookstore columns).
@@ -235,10 +276,13 @@ class ProductController extends Controller
                 'weight' => $product->meta_data['weight'] ?? null,
                 'dimensions' => $product->meta_data['dimensions'] ?? null,
             ],
+            'attributes' => $this->formatProductAttributes($product, $locale),
             'created_at' => $product->created_at?->toIso8601String(),
             'updated_at' => $product->updated_at?->toIso8601String(),
         ];
+
     }
+
 
     /**
      * List all customer-visible products in active locale.
@@ -363,6 +407,7 @@ class ProductController extends Controller
             }
 
             $products = Product::visibleToCustomers()
+                ->with(['attributeValues.attribute'])
                 ->where(function ($query) use ($catIds) {
                     foreach ($catIds as $cid) {
                         $query->orWhereJsonContains('category_id', (int) $cid)
@@ -373,6 +418,51 @@ class ProductController extends Controller
 
             // Direct child subcategories of this category (only actual children)
             $directChildren = $category->child()->where('is_visible', true)->get();
+
+            // Aggregate available filter attributes with live product counts
+            $attrMap = [];
+            foreach ($products as $p) {
+                foreach ($p->attributeValues as $av) {
+                    $attr = $av->attribute;
+                    if (!$attr || !$attr->is_filterable) continue;
+
+                    if (!isset($attrMap[$attr->id])) {
+                        $attrName = $attr->getTranslation('name', $locale) ?: (is_array($attr->name) ? ($attr->name[$locale] ?? reset($attr->name)) : $attr->name);
+                        $attrMap[$attr->id] = [
+                            'id' => $attr->id,
+                            'name' => $attrName,
+                            'name_en' => $attr->getTranslation('name', 'en'),
+                            'name_ar' => $attr->getTranslation('name', 'ar'),
+                            'slug' => $attr->slug,
+                            'type' => $attr->type,
+                            'sort_order' => $attr->sort_order,
+                            'values' => [],
+                        ];
+                    }
+
+                    if (!isset($attrMap[$attr->id]['values'][$av->id])) {
+                        $vName = $av->getTranslation('value', $locale) ?: (is_array($av->value) ? ($av->value[$locale] ?? reset($av->value)) : $av->value);
+                        $attrMap[$attr->id]['values'][$av->id] = [
+                            'id' => $av->id,
+                            'name' => $vName,
+                            'name_en' => $av->getTranslation('value', 'en'),
+                            'name_ar' => $av->getTranslation('value', 'ar'),
+                            'slug' => $av->slug,
+                            'color_code' => $av->color_code,
+                            'sort_order' => $av->sort_order,
+                            'count' => 0,
+                        ];
+                    }
+
+                    $attrMap[$attr->id]['values'][$av->id]['count']++;
+                }
+            }
+
+            $availableFilterAttributes = collect($attrMap)->sortBy('sort_order')->map(function ($a) {
+                $a['values'] = collect($a['values'])->sortBy('sort_order')->values()->toArray();
+                return $a;
+            })->values()->toArray();
+
 
             // Parent category if this is a subcategory (child category)
             $parentCategory = null;
@@ -438,10 +528,14 @@ class ProductController extends Controller
                     'subcategories' => $formattedSubcategories,
                 ],
                 'parent' => $parentCategory,
-                'is_child' => (bool) $category->parent_id,
                 'sub_categories' => $formattedSubcategories,
                 'subcategories' => $formattedSubcategories,
+                'filters' => [
+                    'attributes' => $availableFilterAttributes,
+                ],
+                'attributes' => $availableFilterAttributes,
                 'products' => $products->map(fn ($p) => $this->formatCardProduct($p, $locale))->values(),
+
                 'seo' => [
                     'meta_title' => $category->getTranslation('meta_tag_title', $locale) ?: $category->meta_tag_title,
                     'meta_description' => $category->getTranslation('meta_tag_description', $locale) ?: $category->meta_tag_description,
