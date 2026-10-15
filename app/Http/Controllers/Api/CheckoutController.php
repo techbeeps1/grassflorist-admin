@@ -358,6 +358,37 @@ class CheckoutController extends Controller
             $locationLink = $request->shipping_address_link ?: $request->location_link;
             $deliveryDate = $request->delivery_date;
             $deliveryTime = $request->delivery_time ?: $request->delivery_slot;
+
+            // Format delivery time slot according to order language
+            if (!empty($deliveryTime)) {
+                $rawSlotTime = trim((string)$deliveryTime);
+                $slotModel = \App\Models\DeliverySlot::where('start_time', $rawSlotTime)
+                    ->orWhere('id', $rawSlotTime)
+                    ->orWhere('title_en', $rawSlotTime)
+                    ->orWhere('title_ar', $rawSlotTime)
+                    ->first();
+
+                if (!$slotModel) {
+                    if (str_starts_with($rawSlotTime, '11:00')) {
+                        $slotModel = \App\Models\DeliverySlot::where('start_time', '11:00:00')->first();
+                    } elseif (str_starts_with($rawSlotTime, '19:00') || str_starts_with($rawSlotTime, '07:00')) {
+                        $slotModel = \App\Models\DeliverySlot::where('start_time', '19:00:00')->first();
+                    } elseif (str_starts_with($rawSlotTime, '16:00') || str_starts_with($rawSlotTime, '04:00')) {
+                        $slotModel = \App\Models\DeliverySlot::where('start_time', '16:00:00')->first();
+                    } elseif (str_starts_with($rawSlotTime, '19:30') || str_starts_with($rawSlotTime, '07:30')) {
+                        $slotModel = \App\Models\DeliverySlot::where('start_time', '19:30:00')->first();
+                    }
+                }
+
+                if ($slotModel) {
+                    $deliveryTime = ($orderLanguage === 'ar')
+                        ? ($slotModel->title_ar ?: $slotModel->title_en)
+                        : ($slotModel->title_en ?: $slotModel->title_ar);
+                }
+            } else {
+                $deliveryTime = ($orderLanguage === 'ar') ? 'من 11 صباحاً وحتى 3 مساءً' : '11:00 AM to 03:00 PM';
+            }
+
             $deliveryMessage = $request->card_message ?: $request->delivery_message;
             $songLink = $request->song_link;
 

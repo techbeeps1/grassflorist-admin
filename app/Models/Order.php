@@ -349,4 +349,47 @@ class Order extends Model
     {
         return self::formatPhoneNumber($this->customer_phone);
     }
+
+    /**
+     * Accessor for formatted delivery time slot matching the order language.
+     */
+    public function getFormattedDeliveryTimeAttribute(): string
+    {
+        $time = trim((string)($this->delivery_time ?? ''));
+        $isAr = ($this->order_language === 'ar' || app()->getLocale() === 'ar');
+
+        if (empty($time)) {
+            return $isAr ? 'من 11 صباحاً وحتى 3 مساءً' : '11:00 AM to 03:00 PM';
+        }
+
+        // Try to match active slot by time, id or title
+        $slot = DeliverySlot::where('start_time', $time)
+            ->orWhere('id', $time)
+            ->orWhere('title_en', $time)
+            ->orWhere('title_ar', $time)
+            ->first();
+
+        if ($slot) {
+            return $isAr
+                ? ($slot->title_ar ?: $slot->title_en)
+                : ($slot->title_en ?: $slot->title_ar);
+        }
+
+        // Standard time string fallbacks
+        if (str_starts_with($time, '11:00')) {
+            return $isAr ? 'من 11 صباحاً وحتى 3 مساءً' : '11:00 AM to 03:00 PM';
+        }
+        if (str_starts_with($time, '19:00') || str_starts_with($time, '07:00')) {
+            return $isAr ? 'من 7 مساءً وحتى 10 مساءً' : '07:00 PM to 10:00 PM';
+        }
+        if (str_starts_with($time, '16:00') || str_starts_with($time, '04:00')) {
+            return $isAr ? 'من 4 مساءً وحتى 7 مساءً' : '04:00 PM to 07:00 PM';
+        }
+        if (str_starts_with($time, '19:30') || str_starts_with($time, '07:30')) {
+            return $isAr ? 'من 7 و النصف مساءً وحتى 10 مساءً' : '07:30 PM to 10:00 PM';
+        }
+
+        return $time;
+    }
 }
+

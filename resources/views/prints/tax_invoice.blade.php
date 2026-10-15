@@ -49,7 +49,39 @@
                 $deliveryDateFormatted = substr((string)$order->delivery_date, 0, 10);
             }
         }
-        $deliveryTimeFormatted = !empty($order->delivery_time) ? $order->delivery_time : 'من 11 صباحاً وحتى 3 مساءً';
+        $isArOrder = ($order->order_language === 'ar');
+        $deliveryTimeRaw = trim((string)($order->delivery_time ?? ''));
+
+        $resolvedSlot = null;
+        if (!empty($deliveryTimeRaw)) {
+            $resolvedSlot = \App\Models\DeliverySlot::where('start_time', $deliveryTimeRaw)
+                ->orWhere('id', $deliveryTimeRaw)
+                ->orWhere('title_en', $deliveryTimeRaw)
+                ->orWhere('title_ar', $deliveryTimeRaw)
+                ->first();
+
+            if (!$resolvedSlot) {
+                if (str_starts_with($deliveryTimeRaw, '11:00')) {
+                    $resolvedSlot = \App\Models\DeliverySlot::where('start_time', '11:00:00')->first();
+                } elseif (str_starts_with($deliveryTimeRaw, '19:00') || str_starts_with($deliveryTimeRaw, '07:00')) {
+                    $resolvedSlot = \App\Models\DeliverySlot::where('start_time', '19:00:00')->first();
+                } elseif (str_starts_with($deliveryTimeRaw, '16:00') || str_starts_with($deliveryTimeRaw, '04:00')) {
+                    $resolvedSlot = \App\Models\DeliverySlot::where('start_time', '16:00:00')->first();
+                } elseif (str_starts_with($deliveryTimeRaw, '19:30') || str_starts_with($deliveryTimeRaw, '07:30')) {
+                    $resolvedSlot = \App\Models\DeliverySlot::where('start_time', '19:30:00')->first();
+                }
+            }
+        }
+
+        if ($resolvedSlot) {
+            $deliveryTimeFormatted = $isArOrder
+                ? ($resolvedSlot->title_ar ?: $resolvedSlot->title_en)
+                : ($resolvedSlot->title_en ?: $resolvedSlot->title_ar);
+        } elseif (!empty($deliveryTimeRaw) && !preg_match('/^\d{1,2}:\d{2}(:\d{2})?$/', $deliveryTimeRaw)) {
+            $deliveryTimeFormatted = $deliveryTimeRaw;
+        } else {
+            $deliveryTimeFormatted = $isArOrder ? 'من 11 صباحاً وحتى 3 مساءً' : '11:00 AM to 03:00 PM';
+        }
 
         // Shipping address clean string
         $shippingAddressFormatted = trim(($order->address ?? '') . ' ' . ($order->address_2 ?? '') . ' ' . ($order->city ?? ''));
@@ -655,15 +687,23 @@
             $fmtTax = (floor($tax) == $tax) ? number_format($tax, 0) : number_format($tax, 2);
             $fmtShipping = (floor($shipping) == $shipping) ? number_format($shipping, 0) : number_format($shipping, 2);
             $fmtTotal = (floor($total) == $total) ? number_format($total, 0) : number_format($total, 2);
-            $shippingMethodTitle = $order->shipping_method ?: ($order->shipping_method_name ?: 'Delivery rate inside Jeddah');
-            if (str_contains(strtolower($shippingMethodTitle), 'jeddah')) {
-                $shippingMethodTitle = 'توصيل داخل جدة (Delivery rate inside Jeddah)';
+
+            $shippingRaw = strtolower((string)($order->shipping_method ?: ($order->shipping_method_name ?: '')));
+            if (str_contains($shippingRaw, 'jeddah') || empty($shippingRaw)) {
+                $shippingLabelEn = 'Shipping (Delivery inside Jeddah)';
+                $shippingLabelAr = 'الشحن (توصيل داخل جدة)';
+            } elseif (str_contains($shippingRaw, 'pickup') || str_contains($shippingRaw, 'استلام')) {
+                $shippingLabelEn = 'Store Pickup';
+                $shippingLabelAr = 'الاستلام من الفرع';
+            } else {
+                $shippingLabelEn = 'Shipping (' . ucwords(str_replace(['_', '-'], ' ', $order->shipping_method ?: 'Standard Delivery')) . ')';
+                $shippingLabelAr = 'الشحن (' . ($order->shipping_method ?: 'توصيل قياسي') . ')';
             }
         @endphp
         <table class="totals-table">
             <tr>
                 <td class="tot-en">Payment method</td>
-                <td class="tot-ar">ع طريقة الدفع اي السداد</td>
+                <td class="tot-ar">طريقة الدفع</td>
                 <td class="tot-val">{{ $paymentMethodAr }}</td>
             </tr>
             <tr>
@@ -677,9 +717,9 @@
                 <td class="tot-val"><span class="sar-symbol">﷼</span>{{ $fmtTax }}</td>
             </tr>
             <tr>
-                <td class="tot-en">Shipping</td>
-                <td class="tot-ar">شحن</td>
-                <td class="tot-val"><span class="sar-symbol">﷼</span>{{ $fmtShipping }} بواسطة {{ $shippingMethodTitle }}</td>
+                <td class="tot-en">{{ $shippingLabelEn }}</td>
+                <td class="tot-ar">{{ $shippingLabelAr }}</td>
+                <td class="tot-val"><span class="sar-symbol">﷼</span>{{ $fmtShipping }}</td>
             </tr>
             <tr class="tot-grand">
                 <td class="tot-en">Total</td>
