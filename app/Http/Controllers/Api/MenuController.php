@@ -69,8 +69,18 @@ class MenuController extends Controller
                 continue;
             }
 
-            // Filter subcategories
+            // Filter and canonicalize subcategories
             if (!empty($item['subcategories']) && is_array($item['subcategories'])) {
+                // Determine if parent menu item is a category
+                $parentSlugEn = null;
+                $parentSlugAr = null;
+                if (!empty($item['url_en']) && preg_match('#^/en/category/([^/]+)$#', $item['url_en'], $mEn)) {
+                    $parentSlugEn = $mEn[1];
+                }
+                if (!empty($item['url_ar']) && preg_match('#^/category/([^/]+)$#', $item['url_ar'], $mAr)) {
+                    $parentSlugAr = $mAr[1];
+                }
+
                 $filteredSubs = [];
                 foreach ($item['subcategories'] as $sub) {
                     $subUrlEn = $sub['url_en'] ?? ($sub['href']['en'] ?? '');
@@ -80,14 +90,35 @@ class MenuController extends Controller
                         continue;
                     }
 
+                    // Canonicalize child category URL under parent category if applicable
+                    if ($parentSlugEn && !empty($subUrlEn) && preg_match('#^/en/category/([^/]+)$#', $subUrlEn, $subMatchEn)) {
+                        $childSlug = $subMatchEn[1];
+                        if ($childSlug !== $parentSlugEn) {
+                            $sub['url_en'] = "/en/category/{$parentSlugEn}/{$childSlug}";
+                            if (isset($sub['href']['en'])) $sub['href']['en'] = $sub['url_en'];
+                        }
+                    }
+                    if ($parentSlugAr && !empty($subUrlAr) && preg_match('#^/category/([^/]+)$#', $subUrlAr, $subMatchAr)) {
+                        $childSlug = $subMatchAr[1];
+                        if ($childSlug !== $parentSlugAr) {
+                            $sub['url_ar'] = "/category/{$parentSlugAr}/{$childSlug}";
+                            if (isset($sub['href']['ar'])) $sub['href']['ar'] = $sub['url_ar'];
+                        }
+                    }
+
                     // Filter children
                     if (!empty($sub['children']) && is_array($sub['children'])) {
-                        $sub['children'] = array_values(array_filter($sub['children'], function ($child) use ($isUrlInvisible) {
+                        $filteredChildren = [];
+                        foreach ($sub['children'] as $child) {
                             $childUrlEn = $child['url_en'] ?? ($child['href']['en'] ?? '');
                             $childUrlAr = $child['url_ar'] ?? ($child['href']['ar'] ?? '');
                             $childId = $child['id'] ?? '';
-                            return ! $isUrlInvisible($childUrlEn, $childId) && ! $isUrlInvisible($childUrlAr, $childId);
-                        }));
+                            if ($isUrlInvisible($childUrlEn, $childId) || $isUrlInvisible($childUrlAr, $childId)) {
+                                continue;
+                            }
+                            $filteredChildren[] = $child;
+                        }
+                        $sub['children'] = $filteredChildren;
                     }
 
                     $filteredSubs[] = $sub;

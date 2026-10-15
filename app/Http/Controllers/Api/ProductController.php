@@ -371,27 +371,29 @@ class ProductController extends Controller
                 })
                 ->get();
 
-            // Direct child subcategories of this category
+            // Direct child subcategories of this category (only actual children)
             $directChildren = $category->child()->where('is_visible', true)->get();
 
-            // If this category itself is a subcategory (has parent), get siblings too
-            if ($directChildren->isEmpty() && $category->parent_id) {
-                $directChildren = Category::where('parent_id', $category->parent_id)
-                    ->where('is_visible', true)
-                    ->get();
-            }
-
-            // Fallback: If category has no child records, check product categoryIds
-            if ($directChildren->isEmpty()) {
-                $categoryIds = $products->flatMap(function ($product) {
-                    $ids = is_array($product->category_id)
-                        ? $product->category_id
-                        : json_decode($product->category_id, true);
-                    return $ids ?: [];
-                })->filter(fn ($id) => (int) $id !== (int) $category->id)->unique()->values()->toArray();
-
-                if (! empty($categoryIds)) {
-                    $directChildren = Category::whereIn('id', $categoryIds)->where('is_visible', true)->get();
+            // Parent category if this is a subcategory (child category)
+            $parentCategory = null;
+            if ($category->parent_id) {
+                $parent = Category::find($category->parent_id);
+                if ($parent && $parent->is_visible) {
+                    $pImg = $parent->cat_image;
+                    $pImgUrl = null;
+                    if ($pImg) {
+                        $pImgUrl = str_starts_with($pImg, 'http') ? $pImg : asset('storage/' . ltrim($pImg, '/'));
+                    }
+                    $parentCategory = [
+                        'id' => $parent->id,
+                        'name' => $parent->getTranslation('name', $locale) ?: (is_array($parent->name) ? ($parent->name[$locale] ?? reset($parent->name)) : $parent->name),
+                        'name_en' => $parent->getTranslation('name', 'en') ?: (is_array($parent->name) ? ($parent->name['en'] ?? '') : $parent->name),
+                        'name_ar' => $parent->getTranslation('name', 'ar') ?: (is_array($parent->name) ? ($parent->name['ar'] ?? '') : $parent->name),
+                        'slug' => ($locale === 'ar' && filled($parent->slug_ar)) ? $parent->slug_ar : $parent->slug,
+                        'slug_en' => $parent->slug,
+                        'slug_ar' => $parent->slug_ar ?: $parent->slug,
+                        'image' => $pImgUrl ?: $pImg,
+                    ];
                 }
             }
 
@@ -421,13 +423,22 @@ class ProductController extends Controller
             return response()->json([
                 'category' => [
                     'id' => $category->id,
+                    'parent_id' => $category->parent_id,
+                    'is_child' => (bool) $category->parent_id,
+                    'parent' => $parentCategory,
                     'name' => $category->getTranslation('name', $locale) ?: (is_array($category->name) ? ($category->name[$locale] ?? reset($category->name)) : $category->name),
+                    'name_en' => $category->getTranslation('name', 'en') ?: (is_array($category->name) ? ($category->name['en'] ?? '') : $category->name),
+                    'name_ar' => $category->getTranslation('name', 'ar') ?: (is_array($category->name) ? ($category->name['ar'] ?? '') : $category->name),
                     'slug' => ($locale === 'ar' && filled($category->slug_ar)) ? $category->slug_ar : $category->slug,
+                    'slug_en' => $category->slug,
+                    'slug_ar' => $category->slug_ar ?: $category->slug,
                     'description' => $category->getTranslation('description', $locale) ?: (is_array($category->description) ? ($category->description[$locale] ?? '') : $category->description),
                     'image' => $catImgUrl ?: $catImg,
                     'child' => $formattedSubcategories,
                     'subcategories' => $formattedSubcategories,
                 ],
+                'parent' => $parentCategory,
+                'is_child' => (bool) $category->parent_id,
                 'sub_categories' => $formattedSubcategories,
                 'subcategories' => $formattedSubcategories,
                 'products' => $products->map(fn ($p) => $this->formatCardProduct($p, $locale))->values(),
