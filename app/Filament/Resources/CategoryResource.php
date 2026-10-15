@@ -160,6 +160,12 @@ class CategoryResource extends Resource
                                     ->preload()
                                     ->nullable(),
 
+                                TextInput::make('sort_order')
+                                    ->label('Sort Order')
+                                    ->numeric()
+                                    ->default(0)
+                                    ->helperText('Lower numbers appear first. You can also reorder categories by drag & drop on the categories list.'),
+
                                 TextInput::make('source_id')
                                     ->label('WooCommerce ID')
                                     ->disabled()
@@ -184,12 +190,28 @@ class CategoryResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->reorderable('sort_order')
+            ->reorderRecordsTriggerAction(fn (Action $action) => 
+                $action->button()
+                    ->label('Reorder Categories (Drag & Drop)')
+                    ->icon('heroicon-m-arrows-up-down')
+                    ->color('primary')
+            )
+            ->defaultSort('sort_order', 'asc')
+            ->paginated([25, 50, 100, 'all'])
+            ->defaultPaginationPageOption(50)
             ->columns([
                 Tables\Columns\ImageColumn::make('cat_image')
                     ->label('Image')
                     ->disk('public')
                     ->circular()
                     ->defaultImageUrl('/placeholder-category.png'),
+
+                Tables\Columns\TextColumn::make('sort_order')
+                    ->label('Order')
+                    ->sortable()
+                    ->badge()
+                    ->color('info'),
 
                 Tables\Columns\TextColumn::make('id')
                     ->label('ID')

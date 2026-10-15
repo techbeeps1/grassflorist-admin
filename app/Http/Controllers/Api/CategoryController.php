@@ -111,10 +111,11 @@ class CategoryController extends Controller
         $locale = $this->getLocale($request);
 
         $categories = Category::with(['child' => function ($q) {
-            $q->where('is_visible', true);
+            $q->where('is_visible', true)->orderBy('sort_order', 'asc');
         }])
             ->whereNull('parent_id')
             ->where('is_visible', true)
+            ->orderBy('sort_order', 'asc')
             ->get();
 
         return response()->json(

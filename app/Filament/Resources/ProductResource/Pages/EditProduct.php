@@ -11,7 +11,7 @@ use Filament\Actions\Action;
 class EditProduct extends EditRecord
 {
     protected static string $resource = ProductResource::class;
-    
+
 
     protected function getHeaderActions(): array
     {
@@ -57,7 +57,7 @@ class EditProduct extends EditRecord
 
             // 3. UPDATE PRODUCT (Primary Save Action)
             Action::make('update')
-                ->label('Update Product')
+                ->label('Save changes')
                 ->icon('heroicon-o-check-circle')
                 ->color('success')
                 ->action(function () {
@@ -94,13 +94,13 @@ class EditProduct extends EditRecord
     }
 
     public function getHeading(): string
-{
-    return 'Product';
-}
+    {
+        return 'Product';
+    }
 
-public function getBreadcrumbs(): array
-{
-    return [];
-}
+    public function getBreadcrumbs(): array
+    {
+        return [];
+    }
 
 }

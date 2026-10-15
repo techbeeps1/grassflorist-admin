@@ -13,10 +13,10 @@ class EditCategory extends EditRecord
 
     protected function getHeaderActions(): array
     {
-        
+
         return [
             Action::make('update')
-                ->label('Update Category')
+                ->label('Save changes')
                 ->icon('heroicon-o-check')
                 ->color('primary')
                 ->action(function () {
