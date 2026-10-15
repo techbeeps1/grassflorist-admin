@@ -24,6 +24,20 @@ class EditMenu extends EditRecord
         if (($this->record->slug ?? '') === 'footer') {
             $data['footer_items'] = $data['items'] ?? [];
             unset($data['items']);
+
+            if (empty($data['footer_items']['column_1']['category_ids'])) {
+                $defaultCategoryIds = \App\Models\Category::where('is_visible', true)
+                    ->whereNull('parent_id')
+                    ->take(8)
+                    ->pluck('id')
+                    ->map(fn($id) => (int)$id)
+                    ->toArray();
+
+                $data['footer_items']['column_1']['category_ids'] = $defaultCategoryIds;
+                if (!isset($data['footer_items']['column_1']['source'])) {
+                    $data['footer_items']['column_1']['source'] = 'selected';
+                }
+            }
         } else {
             // For Header, strip out any accidental column keys or empty repeater rows
             if (isset($data['items']) && is_array($data['items'])) {

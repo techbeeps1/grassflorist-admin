@@ -209,8 +209,43 @@ class MenuController extends Controller
             return $item;
         }, $filteredHeaderItems);
 
-        // Process Footer Column 1 Categories if set to auto 'categories'
-        if (isset($footerItems['column_1']['source']) && $footerItems['column_1']['source'] === 'categories') {
+        // Process Footer Column 1 Categories
+        $col1Source = $footerItems['column_1']['source'] ?? 'categories';
+        $selectedCatIds = (array) ($footerItems['column_1']['category_ids'] ?? []);
+
+        if ($col1Source === 'selected' || (!empty($selectedCatIds) && $col1Source !== 'categories')) {
+            if (!empty($selectedCatIds)) {
+                $categoriesById = Category::whereIn('id', $selectedCatIds)
+                    ->where('is_visible', true)
+                    ->get()
+                    ->keyBy('id');
+
+                $col1Categories = collect($selectedCatIds)
+                    ->map(fn ($id) => $categoriesById[(int)$id] ?? null)
+                    ->filter()
+                    ->map(function ($cat) {
+                        $en = is_array($cat->name) ? ($cat->name['en'] ?? '') : $cat->name;
+                        $ar = is_array($cat->name) ? ($cat->name['ar'] ?? '') : $cat->name;
+                        $urlEn = '/en/category/' . $cat->slug;
+                        $urlAr = '/category/' . ($cat->slug_ar ?: $cat->slug);
+                        return [
+                            'id' => (string)$cat->id,
+                            'name_en' => $en,
+                            'name_ar' => $ar,
+                            'url_en' => $urlEn,
+                            'url_ar' => $urlAr,
+                            'name' => ['en' => $en, 'ar' => $ar],
+                            'href' => ['en' => $urlEn, 'ar' => $urlAr],
+                        ];
+                    })
+                    ->values();
+
+                $footerItems['column_1']['categories'] = $col1Categories;
+            } else {
+                $footerItems['column_1']['categories'] = [];
+            }
+        } else {
+            // Auto-populate from top visible categories
             $topCategories = Category::where('is_visible', true)
                 ->whereNull('parent_id')
                 ->take(8)
