@@ -24,80 +24,89 @@ class DeliverySlotResource extends Resource
         return auth()->user()?->hasPermission('shipping_methods') ?? true;
     }
 
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
+    public static function getFormSchema(): array
+    {
+        return [
+            Forms\Components\Section::make('Delivery Slot Configuration')
+                ->schema([
+                    Forms\Components\Grid::make(3)
+                        ->schema([
+                            Forms\Components\Select::make('day_type')
+                                ->label('Applicable Day Type')
+                                ->options([
+                                    'regular' => 'Regular Days (Saturday to Thursday)',
+                                    'friday' => 'Friday Only (Special Jummah Timing)',
+                                    'all' => 'All Days (Everyday Slot)',
+                                ])
+                                ->required()
+                                ->default('regular')
+                                ->native(false),
+
+                            Forms\Components\Toggle::make('is_active')
+                                ->label('Active Slot')
+                                ->default(true),
+
+                            Forms\Components\TextInput::make('sort_order')
+                                ->label('Sort Order')
+                                ->numeric()
+                                ->default(0),
+                        ]),
+
+                    Forms\Components\Grid::make(2)
+                        ->schema([
+                            Forms\Components\TextInput::make('title_en')
+                                ->label('Slot Title (English)')
+                                ->placeholder('e.g. 11:00 AM to 03:00 PM')
+                                ->required(),
+
+                            Forms\Components\TextInput::make('title_ar')
+                                ->label('Slot Title (Arabic)')
+                                ->placeholder('e.g. من 11 صباحاً وحتى 3 مساءً')
+                                ->required(),
+                        ]),
+
+                    Forms\Components\Grid::make(4)
+                        ->schema([
+                            Forms\Components\TimePicker::make('start_time')
+                                ->label('Start Time')
+                                ->seconds(false)
+                                ->required(),
+
+                            Forms\Components\TimePicker::make('end_time')
+                                ->label('End Time')
+                                ->seconds(false)
+                                ->required(),
+
+                            Forms\Components\TextInput::make('cutoff_hours_before')
+                                ->label('Cutoff Before Start (Hours)')
+                                ->numeric()
+                                ->default(1)
+                                ->helperText('Hours before start time to auto-disable slot for same-day delivery.'),
+
+                            Forms\Components\TextInput::make('extra_charge')
+                                ->label('Extra Express Surcharge (SAR)')
+                                ->numeric()
+                                ->prefix('SAR')
+                                ->default(0.00),
+                        ]),
+
+                    Forms\Components\TextInput::make('max_orders_capacity')
+                                ->label('Max Order Capacity (Per Slot / Day)')
+                                ->numeric()
+                                ->placeholder('Leave empty for unlimited')
+                                ->helperText('Prevents order overload during peak florist hours.'),
+                ]),
+        ];
+    }
+
     public static function form(Form $form): Form
     {
-        return $form
-            ->schema([
-                Forms\Components\Section::make('Delivery Slot Configuration')
-                    ->schema([
-                        Forms\Components\Grid::make(3)
-                            ->schema([
-                                Forms\Components\Select::make('day_type')
-                                    ->label('Applicable Day Type')
-                                    ->options([
-                                        'regular' => 'Regular Days (Saturday to Thursday)',
-                                        'friday' => 'Friday Only (Special Jummah Timing)',
-                                        'all' => 'All Days (Everyday Slot)',
-                                    ])
-                                    ->required()
-                                    ->default('regular')
-                                    ->native(false),
-
-                                Forms\Components\Toggle::make('is_active')
-                                    ->label('Active Slot')
-                                    ->default(true),
-
-                                Forms\Components\TextInput::make('sort_order')
-                                    ->label('Sort Order')
-                                    ->numeric()
-                                    ->default(0),
-                            ]),
-
-                        Forms\Components\Grid::make(2)
-                            ->schema([
-                                Forms\Components\TextInput::make('title_en')
-                                    ->label('Slot Title (English)')
-                                    ->placeholder('e.g. 11:00 AM to 03:00 PM')
-                                    ->required(),
-
-                                Forms\Components\TextInput::make('title_ar')
-                                    ->label('Slot Title (Arabic)')
-                                    ->placeholder('e.g. من 11 صباحاً وحتى 3 مساءً')
-                                    ->required(),
-                            ]),
-
-                        Forms\Components\Grid::make(4)
-                            ->schema([
-                                Forms\Components\TimePicker::make('start_time')
-                                    ->label('Start Time')
-                                    ->seconds(false)
-                                    ->required(),
-
-                                Forms\Components\TimePicker::make('end_time')
-                                    ->label('End Time')
-                                    ->seconds(false)
-                                    ->required(),
-
-                                Forms\Components\TextInput::make('cutoff_hours_before')
-                                    ->label('Cutoff Before Start (Hours)')
-                                    ->numeric()
-                                    ->default(1)
-                                    ->helperText('Hours before start time to auto-disable slot for same-day delivery.'),
-
-                                Forms\Components\TextInput::make('extra_charge')
-                                    ->label('Extra Express Surcharge (SAR)')
-                                    ->numeric()
-                                    ->prefix('SAR')
-                                    ->default(0.00),
-                            ]),
-
-                        Forms\Components\TextInput::make('max_orders_capacity')
-                            ->label('Max Order Capacity (Per Slot / Day)')
-                            ->numeric()
-                            ->placeholder('Leave empty for unlimited')
-                            ->helperText('Prevents order overload during peak florist hours.'),
-                    ]),
-            ]);
+        return $form->schema(static::getFormSchema());
     }
 
     public static function table(Table $table): Table
