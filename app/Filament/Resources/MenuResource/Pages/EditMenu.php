@@ -25,18 +25,30 @@ class EditMenu extends EditRecord
             $data['footer_items'] = $data['items'] ?? [];
             unset($data['items']);
 
-            if (empty($data['footer_items']['column_1']['category_ids'])) {
-                $defaultCategoryIds = \App\Models\Category::where('is_visible', true)
+            $col1 = $data['footer_items']['column_1'] ?? [];
+            $categoriesRepeater = $col1['categories'] ?? [];
+            $categoryIds = $col1['category_ids'] ?? [];
+
+            $hasValidRepeaterRows = is_array($categoriesRepeater) && !empty($categoriesRepeater) && isset($categoriesRepeater[0]['category_id']);
+
+            if (!$hasValidRepeaterRows && !empty($categoryIds)) {
+                $categoriesRepeater = collect($categoryIds)
+                    ->map(fn($id) => ['category_id' => (int) $id])
+                    ->values()
+                    ->toArray();
+            } elseif (!$hasValidRepeaterRows && empty($categoryIds)) {
+                $categoriesRepeater = \App\Models\Category::where('is_visible', true)
                     ->whereNull('parent_id')
                     ->take(8)
                     ->pluck('id')
-                    ->map(fn($id) => (int)$id)
+                    ->map(fn($id) => ['category_id' => (int) $id])
+                    ->values()
                     ->toArray();
+            }
 
-                $data['footer_items']['column_1']['category_ids'] = $defaultCategoryIds;
-                if (!isset($data['footer_items']['column_1']['source'])) {
-                    $data['footer_items']['column_1']['source'] = 'selected';
-                }
+            $data['footer_items']['column_1']['categories'] = $categoriesRepeater;
+            if (!isset($data['footer_items']['column_1']['source'])) {
+                $data['footer_items']['column_1']['source'] = 'selected';
             }
         } else {
             // For Header, strip out any accidental column keys or empty repeater rows
@@ -62,6 +74,17 @@ class EditMenu extends EditRecord
         if (($this->record->slug ?? '') === 'footer') {
             $data['items'] = $data['footer_items'] ?? [];
             unset($data['footer_items']);
+
+            if (isset($data['items']['column_1']['categories']) && is_array($data['items']['column_1']['categories'])) {
+                $orderedIds = collect($data['items']['column_1']['categories'])
+                    ->pluck('category_id')
+                    ->filter()
+                    ->map(fn($id) => (int) $id)
+                    ->values()
+                    ->toArray();
+
+                $data['items']['column_1']['category_ids'] = $orderedIds;
+            }
         } else {
             if (isset($data['items']) && is_array($data['items'])) {
                 $clean = [];

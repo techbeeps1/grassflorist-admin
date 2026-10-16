@@ -300,25 +300,41 @@ class MenuResource extends Resource
                                             ->default('التصنيفات')
                                             ->required(),
 
-                                        Forms\Components\Select::make('footer_items.column_1.source')
-                                            ->label('Categories Source')
-                                            ->options([
-                                                'selected' => 'Select Specific Categories (Multi-select)',
-                                                'categories' => 'Auto-populate from Visible Store Categories',
-                                            ])
-                                            ->default('selected')
-                                            ->reactive(),
-                                    ]),
+                                Forms\Components\Select::make('footer_items.column_1.source')
+                                    ->label('Categories Source')
+                                    ->options([
+                                        'selected' => 'Custom Categories (Drag & Drop Reorder)',
+                                        'categories' => 'Auto-populate from Visible Store Categories',
+                                    ])
+                                    ->default('selected')
+                                    ->reactive(),
+                            ]),
 
-                                Forms\Components\Select::make('footer_items.column_1.category_ids')
-                                    ->label('Select Store Categories')
-                                    ->placeholder('Choose one or more categories...')
-                                    ->multiple()
+                        Forms\Components\Repeater::make('footer_items.column_1.categories')
+                            ->label('Footer Categories (Drag handle to reorder)')
+                            ->itemLabel(function (array $state): ?string {
+                                if (empty($state['category_id'])) return 'Select category...';
+                                $cat = Category::find($state['category_id']);
+                                if (! $cat) return "Category #{$state['category_id']}";
+                                $en = is_array($cat->name) ? ($cat->name['en'] ?? '') : $cat->name;
+                                $ar = is_array($cat->name) ? ($cat->name['ar'] ?? '') : '';
+                                return "🌸 {$en}" . ($ar ? " ({$ar})" : '') . " [ID: {$cat->id}]";
+                            })
+                            ->reorderable()
+                            ->collapsible()
+                            ->collapsed(true)
+                            ->cloneable(false)
+                            ->defaultItems(0)
+                            ->addActionLabel('+ Add Category')
+                            ->schema([
+                                Forms\Components\Select::make('category_id')
+                                    ->label('Category')
+                                    ->placeholder('Choose a category...')
                                     ->searchable()
                                     ->preload()
+                                    ->required()
                                     ->options(function () {
                                         return Category::where('is_visible', true)
-                                            ->orderBy('id')
                                             ->get()
                                             ->mapWithKeys(function ($cat) {
                                                 $en = is_array($cat->name) ? ($cat->name['en'] ?? '') : $cat->name;
@@ -327,9 +343,11 @@ class MenuResource extends Resource
                                                 return [$cat->id => "{$prefix}{$en}" . ($ar ? " ({$ar})" : '') . " [ID: {$cat->id}]"];
                                             });
                                     })
-                                    ->helperText('Select the specific categories to display in the footer. You can select multiple, reorder, or remove anytime.')
-                                    ->visible(fn (callable $get) => ($get('footer_items.column_1.source') ?? 'selected') === 'selected'),
-                            ]),
+                                    ->live(),
+                            ])
+                            ->helperText('Grab and drag any category row using the drag handle on the left to change its order in the footer.')
+                            ->visible(fn (callable $get) => ($get('footer_items.column_1.source') ?? 'selected') === 'selected'),
+                    ]),
 
                         // Column 2
                         Forms\Components\Section::make('Column 2: Quick Links')

@@ -211,7 +211,18 @@ class MenuController extends Controller
 
         // Process Footer Column 1 Categories
         $col1Source = $footerItems['column_1']['source'] ?? 'categories';
-        $selectedCatIds = (array) ($footerItems['column_1']['category_ids'] ?? []);
+        $selectedCatIds = [];
+        if (!empty($footerItems['column_1']['categories']) && is_array($footerItems['column_1']['categories'])) {
+            $selectedCatIds = collect($footerItems['column_1']['categories'])
+                ->pluck('category_id')
+                ->filter()
+                ->map(fn($id) => (int) $id)
+                ->values()
+                ->toArray();
+        }
+        if (empty($selectedCatIds) && !empty($footerItems['column_1']['category_ids'])) {
+            $selectedCatIds = array_map('intval', (array) $footerItems['column_1']['category_ids']);
+        }
 
         if ($col1Source === 'selected' || (!empty($selectedCatIds) && $col1Source !== 'categories')) {
             if (!empty($selectedCatIds)) {
