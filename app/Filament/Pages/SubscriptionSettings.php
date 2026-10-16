@@ -70,13 +70,13 @@ class SubscriptionSettings extends Page implements HasForms
                                     ->get()
                                     ->mapWithKeys(function (Product $p) {
                                         $name = format_translatable($p->name, 'en') ?: format_translatable($p->name, 'ar') ?: ($p->sku ?: "Product #{$p->id}");
-                                        return [$p->id => "#{$p->id} - {$name} (SAR {$p->price})"];
+                                        $visibilityBadge = $p->is_visible ? '' : ' [Hidden from Store]';
+                                        return [$p->id => "#{$p->id} - {$name} (SAR {$p->price}){$visibilityBadge}"];
                                     })
                                     ->toArray();
                             })
                             ->getSearchResultsUsing(function (string $search): array {
                                 return Product::query()
-                                    ->where('is_visible', 1)
                                     ->where(function ($q) use ($search) {
                                         $q->where('name', 'like', "%{$search}%")
                                           ->orWhere('sku', 'like', "%{$search}%")
@@ -86,25 +86,25 @@ class SubscriptionSettings extends Page implements HasForms
                                     ->get()
                                     ->mapWithKeys(function (Product $p) {
                                         $name = format_translatable($p->name, 'en') ?: format_translatable($p->name, 'ar') ?: ($p->sku ?: "Product #{$p->id}");
-                                        return [$p->id => "#{$p->id} - {$name} (SAR {$p->price})"];
+                                        $visibilityBadge = $p->is_visible ? '' : ' [Hidden from Store]';
+                                        return [$p->id => "#{$p->id} - {$name} (SAR {$p->price}){$visibilityBadge}"];
                                     })
                                     ->toArray();
                             })
                             ->options(function (): array {
                                 $selectedIds = SubscriptionSetting::current()->subscription_product_ids ?: [];
                                 return Product::query()
-                                    ->where('is_visible', 1)
-                                    ->orWhereIn('id', $selectedIds)
                                     ->orderBy('id', 'desc')
                                     ->limit(100)
                                     ->get()
                                     ->mapWithKeys(function (Product $p) {
                                         $name = format_translatable($p->name, 'en') ?: format_translatable($p->name, 'ar') ?: ($p->sku ?: "Product #{$p->id}");
-                                        return [$p->id => "#{$p->id} - {$name} (SAR {$p->price})"];
+                                        $visibilityBadge = $p->is_visible ? '' : ' [Hidden from Store]';
+                                        return [$p->id => "#{$p->id} - {$name} (SAR {$p->price}){$visibilityBadge}"];
                                     })
                                     ->toArray();
                             })
-                            ->helperText('Search and select products to be available for recurring subscriptions.')
+                            ->helperText('Search and select products to be available for recurring subscriptions (including products hidden from the normal storefront).')
                             ->required(),
                     ]),
 

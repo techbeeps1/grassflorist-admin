@@ -32,9 +32,18 @@ class SmsTemplate extends Model
         $message = ($locale === 'ar' && !empty($this->message_ar)) ? $this->message_ar : $this->message_en;
 
         foreach ($data as $key => $value) {
-            if (is_scalar($value) || is_null($value)) {
-                $message = str_replace('{' . $key . '}', (string)$value, $message);
+            $replacement = '';
+            if (is_array($value)) {
+                $replacement = ($locale === 'ar' && !empty($value['ar']))
+                    ? $value['ar']
+                    : ($value['en'] ?? ($value['ar'] ?? (is_scalar(reset($value)) ? reset($value) : '')));
+            } elseif (is_scalar($value) || is_null($value)) {
+                $replacement = (string)$value;
+            } else {
+                continue;
             }
+
+            $message = str_replace('{' . $key . '}', (string)$replacement, $message);
         }
 
         return trim($message);

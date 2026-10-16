@@ -20,23 +20,18 @@ class SubscriptionPlanController extends Controller
 
         $productIds = $settings->subscription_product_ids ?: [];
 
-        // Fallback if no products selected yet
-        if (empty($productIds)) {
-            $productIds = Product::where('is_visible', 1)
+        // Products explicitly selected in Subscription Settings are included regardless of is_visible
+        if (!empty($productIds)) {
+            $productIdsInt = array_map('intval', (array)$productIds);
+            $products = Product::whereIn('id', $productIdsInt)->get();
+            $orderMap = array_flip($productIdsInt);
+            $products = $products->sortBy(fn($p) => $orderMap[(int)$p->id] ?? 999)->values();
+        } else {
+            // Fallback if no products selected yet in Subscription Settings
+            $products = Product::where('is_visible', 1)
                 ->whereNotNull('image')
                 ->limit(3)
-                ->pluck('id')
-                ->toArray();
-        }
-
-        $products = Product::whereIn('id', $productIds)
-            ->where('is_visible', 1)
-            ->get();
-
-        // Preserve selected order
-        if (!empty($productIds)) {
-            $orderMap = array_flip($productIds);
-            $products = $products->sortBy(fn($p) => $orderMap[$p->id] ?? 999)->values();
+                ->get();
         }
 
         $plans = $products->map(function (Product $product) use ($locale, $settings) {
@@ -133,15 +128,44 @@ class SubscriptionPlanController extends Controller
         $locale = $request->query('locale', 'ar');
         $settings = SubscriptionSetting::current();
 
-        $product = Product::where('slug', $slug)
-            ->orWhere('slug_ar', $slug)
-            ->orWhere('id', is_numeric($slug) ? (int)$slug : 0)
+        if (!$settings->is_enabled) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Subscriptions are currently disabled.',
+            ], 404);
+        }
+
+        $subscriptionProductIds = array_map('intval', (array)($settings->subscription_product_ids ?: []));
+
+        // If no products configured in Subscription Settings, return 404
+        if (empty($subscriptionProductIds)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Subscription plan not found in subscription settings.',
+            ], 404);
+        }
+
+        $decodedSlug = urldecode($slug);
+
+        // ONLY allow products that are explicitly configured in Subscription Settings.
+        // Product is allowed even if is_visible is false (hidden from normal storefront).
+        $product = Product::whereIn('id', $subscriptionProductIds)
+            ->where(function ($q) use ($slug, $decodedSlug) {
+                $q->where('slug', $slug)
+                  ->orWhere('slug_ar', $slug)
+                  ->orWhere('slug', $decodedSlug)
+                  ->orWhere('slug_ar', $decodedSlug);
+
+                if (is_numeric($slug)) {
+                    $q->orWhere('id', (int)$slug);
+                }
+            })
             ->first();
 
         if (!$product) {
             return response()->json([
                 'success' => false,
-                'message' => 'Product not found',
+                'message' => 'Subscription plan not found or not configured in subscription settings.',
             ], 404);
         }
 

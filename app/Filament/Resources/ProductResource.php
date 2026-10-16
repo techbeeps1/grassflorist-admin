@@ -399,28 +399,6 @@ class ProductResource extends Resource
                                     ->label('Active / Visible')
                                     ->default(true),
                             ]),
-
-                        Forms\Components\Section::make('Subscription & Recurring Deliveries')
-                            ->icon('heroicon-o-arrow-path')
-                            ->schema([
-                                Toggle::make('is_subscription_enabled')
-                                    ->label('Enable Subscriptions')
-                                    ->helperText('Allow customers to buy via recurring delivery plans.')
-                                    ->default(true)
-                                    ->live(),
-
-                                TextInput::make('subscription_discount_percentage')
-                                    ->label('Custom Discount Override (%)')
-                                    ->numeric()
-                                    ->minValue(0)
-                                    ->maxValue(100)
-                                    ->nullable()
-                                    ->suffix('%')
-                                    ->placeholder('Leave empty to use global setting (10%)')
-                                    ->helperText('Override the global subscription discount for this specific product only.')
-                                    ->visible(fn (Forms\Get $get) => (bool)$get('is_subscription_enabled')),
-                            ])
-                            ->collapsible(),
                     ])->columnSpan(1),
                 ]),
             ]);
@@ -515,8 +493,15 @@ class ProductResource extends Resource
 
                 Tables\Columns\IconColumn::make('is_subscription_enabled')
                     ->label('Subscription')
+                    ->state(function (Product $record) {
+                        static $subscriptionProductIds = null;
+                        if ($subscriptionProductIds === null) {
+                            $settings = \App\Models\SubscriptionSetting::current();
+                            $subscriptionProductIds = array_map('intval', (array)($settings->subscription_product_ids ?? []));
+                        }
+                        return in_array((int)$record->id, $subscriptionProductIds, true);
+                    })
                     ->boolean()
-                    ->sortable()
                     ->toggleable(),
             ])
             ->defaultSort('id', 'desc')

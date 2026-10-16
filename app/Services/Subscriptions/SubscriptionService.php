@@ -38,9 +38,14 @@ class SubscriptionService
 
         $product = Product::findOrFail($productId);
 
-        if (!$product->is_subscription_enabled) {
+        $subscriptionProductIds = array_map('intval', (array)($settings->subscription_product_ids ?: []));
+        $isSubAllowed = !empty($subscriptionProductIds)
+            ? in_array((int)$product->id, $subscriptionProductIds, true)
+            : (bool)$product->is_subscription_enabled;
+
+        if (!$isSubAllowed) {
             throw ValidationException::withMessages([
-                'product_id' => ["Subscriptions are not enabled for '{$product->name}'."],
+                'product_id' => ["Subscriptions are not enabled for '{$product->name}' in subscription settings."],
             ]);
         }
 

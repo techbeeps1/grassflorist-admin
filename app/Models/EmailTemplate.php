@@ -35,10 +35,19 @@ class EmailTemplate extends Model
         $body = ($locale === 'ar' && !empty($this->body_ar)) ? $this->body_ar : $this->body_en;
 
         foreach ($data as $key => $value) {
-            if (is_scalar($value) || is_null($value)) {
-                $subject = str_replace('{' . $key . '}', (string)$value, $subject);
-                $body = str_replace('{' . $key . '}', (string)$value, $body);
+            $replacement = '';
+            if (is_array($value)) {
+                $replacement = ($locale === 'ar' && !empty($value['ar']))
+                    ? $value['ar']
+                    : ($value['en'] ?? ($value['ar'] ?? (is_scalar(reset($value)) ? reset($value) : '')));
+            } elseif (is_scalar($value) || is_null($value)) {
+                $replacement = (string)$value;
+            } else {
+                continue;
             }
+
+            $subject = str_replace('{' . $key . '}', (string)$replacement, $subject);
+            $body = str_replace('{' . $key . '}', (string)$replacement, $body);
         }
 
         return [

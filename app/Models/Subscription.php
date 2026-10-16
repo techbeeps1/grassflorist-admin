@@ -223,9 +223,21 @@ class Subscription extends Model
 
     public function logActivity(string $type, string $description, array $properties = [], ?int $userId = null): void
     {
+        $adminUserId = null;
+        if ($userId && \App\Models\User::where('id', $userId)->exists()) {
+            $adminUserId = $userId;
+        } elseif (auth()->check() && auth()->user() instanceof \App\Models\User) {
+            $adminUserId = auth()->id();
+        }
+
+        $customerId = $this->customer_id;
+        if (!$customerId && auth()->check() && auth()->user() instanceof \App\Models\Customer) {
+            $customerId = auth()->id();
+        }
+
         $this->activities()->create([
-            'customer_id' => $this->customer_id,
-            'user_id' => $userId ?: (auth()->check() ? auth()->id() : null),
+            'customer_id' => $customerId,
+            'user_id' => $adminUserId,
             'activity_type' => $type,
             'description' => $description,
             'properties' => $properties,

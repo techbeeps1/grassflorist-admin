@@ -660,8 +660,37 @@ class NotificationService
 
             $deliveryTime = $subscription->delivery_time_slot ?: ($isAr ? 'الفترة الصباحية (09:00 ص - 01:00 م)' : 'Morning (09:00 AM - 01:00 PM)');
 
-            // Product / Arrangement name
-            $productName = $subscription->product?->name ?? ($subscription->metadata['plan_name'] ?? ($isAr ? 'باقة الزهور الدورية' : 'Floral Subscription Plan'));
+            // Product / Arrangement name (multilingual)
+            $productTranslations = $subscription->product?->getTranslations('name');
+            $rawProductName = $subscription->product?->name;
+
+            if (!empty($productTranslations) && is_array($productTranslations)) {
+                $nameEn = !empty($productTranslations['en']) ? $productTranslations['en'] : ($productTranslations['ar'] ?? '');
+                $nameAr = !empty($productTranslations['ar']) ? $productTranslations['ar'] : ($productTranslations['en'] ?? '');
+            } elseif (is_array($rawProductName)) {
+                $nameEn = !empty($rawProductName['en']) ? $rawProductName['en'] : ($rawProductName['ar'] ?? '');
+                $nameAr = !empty($rawProductName['ar']) ? $rawProductName['ar'] : ($rawProductName['en'] ?? '');
+            } elseif (is_string($rawProductName) && !empty($rawProductName)) {
+                $nameEn = $rawProductName;
+                $nameAr = $rawProductName;
+            } else {
+                $metaPlan = $subscription->metadata['plan_name'] ?? null;
+                if (is_array($metaPlan)) {
+                    $nameEn = !empty($metaPlan['en']) ? $metaPlan['en'] : ($metaPlan['ar'] ?? 'Floral Subscription Plan');
+                    $nameAr = !empty($metaPlan['ar']) ? $metaPlan['ar'] : ($metaPlan['en'] ?? 'باقة الزهور الدورية');
+                } elseif (is_string($metaPlan) && !empty($metaPlan)) {
+                    $nameEn = $metaPlan;
+                    $nameAr = $metaPlan;
+                } else {
+                    $nameEn = 'Floral Subscription Plan';
+                    $nameAr = 'باقة الزهور الدورية';
+                }
+            }
+
+            $productName = [
+                'en' => $nameEn,
+                'ar' => $nameAr,
+            ];
 
             // Address formatting
             $recipientName = $addr['recipient_name'] ?? $customerName;
