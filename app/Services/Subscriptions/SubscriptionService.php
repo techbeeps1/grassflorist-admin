@@ -663,7 +663,7 @@ class SubscriptionService
      */
     public function skipDelivery(SubscriptionDelivery $delivery, ?string $reason = null): bool
     {
-        if ($delivery->delivery_status !== 'scheduled') {
+        if (!in_array($delivery->delivery_status, ['scheduled', 'rescheduled'], true)) {
             throw ValidationException::withMessages([
                 'delivery' => ["Only scheduled deliveries can be skipped (Current: {$delivery->delivery_status})."],
             ]);
@@ -674,7 +674,7 @@ class SubscriptionService
 
         // Advance subscription's next_delivery_date to the subsequent scheduled cycle
         $nextDelivery = $subscription->deliveries()
-            ->where('delivery_status', 'scheduled')
+            ->whereIn('delivery_status', ['scheduled', 'rescheduled'])
             ->where('scheduled_date', '>', $delivery->scheduled_date->toDateString())
             ->orderBy('scheduled_date', 'asc')
             ->first();

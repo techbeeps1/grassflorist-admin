@@ -384,9 +384,9 @@ class SubscriptionApiController extends Controller
 
         // Get the earliest scheduled delivery
         $delivery = $subscription->deliveries()
-            ->where('status', 'scheduled')
-            ->whereDate('scheduled_delivery_date', '>=', now()->toDateString())
-            ->orderBy('scheduled_delivery_date', 'asc')
+            ->whereIn('delivery_status', ['scheduled', 'rescheduled'])
+            ->whereDate('scheduled_date', '>=', now()->toDateString())
+            ->orderBy('scheduled_date', 'asc')
             ->first();
 
         if (!$delivery) {
@@ -399,9 +399,13 @@ class SubscriptionApiController extends Controller
         $reason = $request->input('reason', 'Skipped by customer');
         $this->subscriptionService->skipDelivery($delivery, $reason);
 
+        $deliveryDateStr = $delivery->scheduled_date instanceof \DateTimeInterface
+            ? $delivery->scheduled_date->format('Y-m-d')
+            : (string)$delivery->scheduled_date;
+
         return response()->json([
             'success' => true,
-            'message' => "Delivery scheduled for {$delivery->scheduled_delivery_date} skipped successfully.",
+            'message' => "Delivery scheduled for {$deliveryDateStr} skipped successfully.",
             'next_delivery_date' => $subscription->fresh()->next_delivery_date,
         ]);
     }
@@ -542,7 +546,7 @@ class SubscriptionApiController extends Controller
         $subscription = Subscription::where('id', $id)->where('customer_id', $customer->id)->firstOrFail();
 
         $failedDelivery = $subscription->deliveries()
-            ->where('status', 'failed')
+            ->where('payment_status', 'failed')
             ->latest('id')
             ->first();
 
@@ -565,7 +569,11 @@ class SubscriptionApiController extends Controller
 
             if (!empty($result['success'])) {
                 PaymentManager::markOrderAsPaid($order, $result['transaction_id'] ?? 'RETRY_SUCCESS', $gateway, $result, 'RETRY');
-                $failedDelivery->update(['status' => 'delivered', 'paid_at' => now(), 'failure_reason' => null]);
+                $failedDelivery->update([
+                    'payment_status' => 'paid',
+                    'delivery_status' => 'scheduled',
+                    'payment_reference' => $result['transaction_id'] ?? 'RETRY_SUCCESS',
+                ]);
                 $subscription->update(['failed_payment_attempts' => 0, 'status' => 'active']);
 
                 return response()->json([
