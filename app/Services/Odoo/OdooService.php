@@ -22,20 +22,23 @@ class OdooService
 
         // 1. Bypass Specific Email Check
         $customerEmail = strtolower(trim((string)$order->email));
-        $bypassEmailsRaw = $settings->odoo_bypass_emails ?: "gurjeet@techbeeps.com";
-        $bypassEmails = array_filter(array_map('trim', preg_split('/[\s,]+/', strtolower((string)$bypassEmailsRaw))));
-        if (!empty($customerEmail) && in_array($customerEmail, $bypassEmails, true)) {
-            return "Customer email '{$customerEmail}' is in Odoo testing bypass list.";
+        $bypassEmailsRaw = $settings->odoo_bypass_emails;
+        if (!empty($bypassEmailsRaw)) {
+            $bypassEmails = array_filter(array_map('trim', preg_split('/[\s,]+/', strtolower((string)$bypassEmailsRaw))));
+            if (!empty($customerEmail) && in_array($customerEmail, $bypassEmails, true)) {
+                return "Customer email '{$customerEmail}' is in Odoo testing bypass list.";
+            }
         }
 
-        // 3. Bypass Email Domain Check (e.g. techbeeps.com, techbeeps.co.in)
-        $bypassDomainsRaw = $settings->odoo_bypass_domains ?: "techbeeps.com\ntechbeeps.co.in";
-        $bypassDomains = array_filter(array_map('trim', preg_split('/[\s,\r\n]+/', strtolower((string)$bypassDomainsRaw))));
-
-        if (!empty($customerEmail) && str_contains($customerEmail, '@')) {
-            $emailDomain = strtolower(substr(strrchr($customerEmail, '@'), 1));
-            if (in_array($emailDomain, $bypassDomains, true)) {
-                return "Customer email domain '@{$emailDomain}' is configured to bypass Odoo sync.";
+        // 2. Bypass Email Domain Check
+        $bypassDomainsRaw = $settings->odoo_bypass_domains;
+        if (!empty($bypassDomainsRaw)) {
+            $bypassDomains = array_filter(array_map('trim', preg_split('/[\s,\r\n]+/', strtolower((string)$bypassDomainsRaw))));
+            if (!empty($customerEmail) && str_contains($customerEmail, '@')) {
+                $emailDomain = strtolower(substr(strrchr($customerEmail, '@'), 1));
+                if (in_array($emailDomain, $bypassDomains, true)) {
+                    return "Customer email domain '@{$emailDomain}' is configured to bypass Odoo sync.";
+                }
             }
         }
 
@@ -105,6 +108,21 @@ class OdooService
 
         $orderDate = $order->created_at ? $order->created_at->format('Y-m-d') : date('Y-m-d');
 
+        // Ensure order key exists for public/authorized tax invoice link
+        if (empty($order->order_key)) {
+            $order->order_key = 'wc_order_' . \Illuminate\Support\Str::random(20);
+            $order->saveQuietly();
+        }
+
+        // Ensure official invoice number exists
+        if (empty($order->invoice_number)) {
+            $year = $order->created_at ? $order->created_at->format('Y') : date('Y');
+            $order->invoice_number = "INV/{$year}/{$orderNumber}/{$order->id}";
+            $order->saveQuietly();
+        }
+
+        $taxInvoiceUrl = route('orders.tax_invoice', ['id' => $order->id, 'key' => $order->order_key]);
+
         return [
             'customer' => $customer,
             'order_date' => $orderDate,
@@ -112,6 +130,9 @@ class OdooService
             'order_status' => 'processing',
             'currency' => (string)($order->currency ?: 'SAR'),
             'order_number' => $orderNumber,
+            'invoice_number' => $order->invoice_number,
+            'invoice_url' => $taxInvoiceUrl,
+            'tax_invoice_url' => $taxInvoiceUrl,
             'payment_method' => $paymentMethod,
             'payment_method_title' => $paymentMethodTitle,
             'transaction_id' => $transactionId,
@@ -205,11 +226,15 @@ class OdooService
             $body = $response->body();
             $responseData = json_decode($body, true);
 
-            $isSuccess = $response->successful() && !empty($responseData['result']['success']);
+            $resMsg = (string)($responseData['result']['message'] ?? ($responseData['error']['message'] ?? ''));
+            $isAlreadyPresent = str_contains(strtolower($resMsg), 'already present') || str_contains(strtolower($resMsg), 'already exists');
+
+            $isSuccess = ($response->successful() && !empty($responseData['result']['success'])) || $isAlreadyPresent;
 
             if (!$isSuccess) {
-                $errorMsg = $responseData['result']['message'] 
-                    ?? ($responseData['error']['message'] ?? ("HTTP {$statusCode}: " . substr($body, 0, 300)));
+                $errorMsg = !empty($resMsg) 
+                    ? $resMsg 
+                    : ("HTTP {$statusCode}: " . substr($body, 0, 300));
 
                 $order->update([
                     'odoo_sync_status' => 'failed',
@@ -244,10 +269,13 @@ class OdooService
                 ];
             }
 
-            // 6. Handle Invoice PDF if provided in Base64
-            $invoicePdfBase64 = $responseData['result']['data']['invoice_pdf'] ?? null;
-            $savedPdfPath = null;
-            $savedPdfUrl = null;
+            // 6. Handle Invoice PDF if provided in Base64 or URL
+            $invoicePdfBase64 = $responseData['result']['data']['invoice_pdf'] 
+                ?? ($responseData['result']['data']['invoice_file'] 
+                ?? ($responseData['result']['invoice_pdf'] ?? null));
+
+            $savedPdfPath = $order->odoo_invoice_pdf_path;
+            $savedPdfUrl = $order->odoo_invoice_pdf_url;
 
             if (!empty($invoicePdfBase64)) {
                 $pdfBinary = base64_decode($invoicePdfBase64);
@@ -262,6 +290,12 @@ class OdooService
 
                     $savedPdfPath = $storagePath;
                     $savedPdfUrl = Storage::disk('public')->url($storagePath);
+                }
+            } elseif (empty($savedPdfUrl)) {
+                $remoteUrl = $responseData['result']['data']['invoice_url'] 
+                    ?? ($responseData['result']['data']['pdf_url'] ?? null);
+                if (!empty($remoteUrl)) {
+                    $savedPdfUrl = $remoteUrl;
                 }
             }
 
@@ -294,26 +328,33 @@ class OdooService
                 'synced_by' => $syncedBy,
             ]);
 
+            $successMsg = $isAlreadyPresent 
+                ? "Order #{$orderNumber} is already confirmed in Odoo ERP (Stage: sale)." 
+                : "Order #{$orderNumber} successfully synchronized to Odoo ERP.";
+
             // 10. Record Order Activity Milestone
             try {
                 OrderActivity::log(
                     $order,
                     'odoo_sync',
                     "Order Synced with Odoo ERP",
-                    "Order successfully registered in Odoo ERP." . ($savedPdfUrl ? " Invoice PDF stored." : ""),
+                    $successMsg . ($savedPdfUrl ? " Invoice PDF stored." : ""),
                     [
                         'odoo_status' => 'synced',
                         'invoice_url' => $savedPdfUrl,
+                        'is_already_present' => $isAlreadyPresent,
                         'synced_at' => now()->toDateTimeString(),
                     ]
                 );
             } catch (\Throwable $e) {}
 
+            $finalInvoiceUrl = $savedPdfUrl ?: route('orders.tax_invoice', ['id' => $order->id, 'key' => $order->order_key]);
+
             return [
                 'success' => true,
                 'status' => 'synced',
-                'message' => "Order #{$orderNumber} successfully synchronized to Odoo ERP.",
-                'invoice_pdf_url' => $savedPdfUrl,
+                'message' => $successMsg,
+                'invoice_pdf_url' => $finalInvoiceUrl,
             ];
 
         } catch (\Throwable $e) {

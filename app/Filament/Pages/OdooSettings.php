@@ -85,7 +85,7 @@ class OdooSettings extends Page implements HasForms
                     ->schema([
                         Textarea::make('odoo_bypass_domains')
                             ->label('Bypass Email Domains')
-                            ->placeholder("techbeeps.com\ntechbeeps.co.in")
+                            ->placeholder("example.com\ntestdomain.com")
                             ->helperText('Orders from these email domains will be skipped. Enter one per line or comma-separated.')
                             ->rows(3),
 
