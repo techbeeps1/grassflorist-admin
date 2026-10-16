@@ -63,7 +63,7 @@ class SalesForecastChart extends ChartWidget
             'labels' => $labels,
             'datasets' => [
                 [
-                    'label' => 'Total Sales (₹)',
+                    'label' => 'Total Sales (' . currency_symbol() . ')',
                     'data' => $salesData,
                     'backgroundColor' => 'rgba(16, 185, 129, 0.5)',
                     'borderColor' => 'rgba(16, 185, 129, 1)',
@@ -98,7 +98,7 @@ class SalesForecastChart extends ChartWidget
                 'y' => [
                     'title' => [
                         'display' => true,
-                        'text' => 'Total Sales (₹)',
+                        'text' => 'Total Sales (' . currency_symbol() . ')',
                     ],
                     'position' => 'left',
                 ],

@@ -9,6 +9,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use App\Filament\Resources\SalesForecastResource\Pages;
 
 class SalesForecastResource extends Resource
@@ -101,45 +102,42 @@ class SalesForecastResource extends Resource
 // }
 
     public static function getEloquentQuery(): Builder
-{
-    $currentMonth = Carbon::now()->format('Y-m');
-    $nextMonth = Carbon::now()->addMonth()->format('Y-m');
-    
-    $baseQuery = parent::getEloquentQuery()
-        ->selectRaw('
-            DATE_FORMAT(created_at, "%Y-%m") as month,
-            MIN(id) as id,
-            SUM(total_amount) as total_sales,
-            COUNT(*) as order_count
-        ')
-        ->groupBy('month');
-    
-    // Get current month's actual data for calculation
-    $currentData = Order::query()
-        ->selectRaw('
-            SUM(total_amount) as current_sales,
-            COUNT(*) as current_orders
-        ')
-        ->whereRaw('DATE_FORMAT(created_at, "%Y-%m") = ?', [$currentMonth])
-        ->first();
-    
-    // Calculate forecast values (10% increase)
-    $forecastSales = $currentData ? $currentData->current_sales * 1.10 : 0;
-    $forecastOrders = $currentData ? round($currentData->current_orders * 1.10) : 0;
-    
-    // Add forecast only if next month doesn't exist
-    $baseQuery->union(
-        Order::query()
-            ->selectRaw('? as month, 0 as id, ? as total_sales, ? as order_count', 
-                [$nextMonth, $forecastSales, $forecastOrders])
-            ->whereRaw('NOT EXISTS (
-                SELECT 1 FROM orders 
-                WHERE DATE_FORMAT(created_at, "%Y-%m") = ?
-            )', [$nextMonth])
-        );
-    
-    return $baseQuery->orderBy('month', 'desc');
-}
+    {
+        $currentMonth = Carbon::now()->format('Y-m');
+        $nextMonth = Carbon::now()->addMonth()->format('Y-m');
+
+        $currentData = DB::table('orders')
+            ->whereNull('deleted_at')
+            ->whereRaw("DATE_FORMAT(created_at, '%Y-%m') = ?", [$currentMonth])
+            ->selectRaw("SUM(total_amount) as current_sales, COUNT(*) as current_orders")
+            ->first();
+
+        $actualQuery = DB::table('orders')
+            ->whereNull('deleted_at')
+            ->selectRaw("DATE_FORMAT(created_at, '%Y-%m') as month, MIN(id) as id, SUM(total_amount) as total_sales, COUNT(*) as order_count, NULL as deleted_at")
+            ->groupBy(DB::raw("DATE_FORMAT(created_at, '%Y-%m')"));
+
+        $hasNextMonth = DB::table('orders')
+            ->whereNull('deleted_at')
+            ->whereRaw("DATE_FORMAT(created_at, '%Y-%m') = ?", [$nextMonth])
+            ->exists();
+
+        if (!$hasNextMonth && $currentData && ($currentData->current_orders > 0 || $currentData->current_sales > 0)) {
+            $forecastSales = round($currentData->current_sales * 1.10, 2);
+            $forecastOrders = (int) round($currentData->current_orders * 1.10);
+
+            $predictQuery = DB::query()->selectRaw(
+                "? as month, 0 as id, ? as total_sales, ? as order_count, NULL as deleted_at",
+                [$nextMonth, $forecastSales, $forecastOrders]
+            );
+            $subQuery = $actualQuery->union($predictQuery);
+        } else {
+            $subQuery = $actualQuery;
+        }
+
+        return parent::getEloquentQuery()
+            ->fromSub($subQuery, 'orders');
+    }
 
     public static function getPages(): array
     {
