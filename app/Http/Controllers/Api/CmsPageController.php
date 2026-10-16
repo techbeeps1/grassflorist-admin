@@ -44,16 +44,23 @@ class CmsPageController extends Controller
             }
         }
 
-        $metaTitleAr = $page->getTranslation('meta_title', 'ar') ?: (is_array($page->meta_title) ? ($page->meta_title['ar'] ?? '') : (is_string($page->meta_title) ? $page->meta_title : ''));
-        $metaTitleEn = $page->getTranslation('meta_title', 'en') ?: (is_array($page->meta_title) ? ($page->meta_title['en'] ?? '') : (is_string($page->meta_title) ? $page->meta_title : ''));
-        $metaDescAr = $page->getTranslation('meta_description', 'ar') ?: (is_array($page->meta_description) ? ($page->meta_description['ar'] ?? '') : (is_string($page->meta_description) ? $page->meta_description : ''));
-        $metaDescEn = $page->getTranslation('meta_description', 'en') ?: (is_array($page->meta_description) ? ($page->meta_description['en'] ?? '') : (is_string($page->meta_description) ? $page->meta_description : ''));
-        $metaKeywordsAr = $page->getTranslation('meta_keywords', 'ar') ?: (is_array($page->meta_keywords) ? ($page->meta_keywords['ar'] ?? '') : (is_string($page->meta_keywords) ? $page->meta_keywords : ''));
-        $metaKeywordsEn = $page->getTranslation('meta_keywords', 'en') ?: (is_array($page->meta_keywords) ? ($page->meta_keywords['en'] ?? '') : (is_string($page->meta_keywords) ? $page->meta_keywords : ''));
+        $metaTitle = $page->getTranslation('meta_title', $locale) ?: (is_array($page->meta_title) ? ($page->meta_title[$locale] ?? '') : (is_string($page->meta_title) ? $page->meta_title : ''));
+        if (empty($metaTitle)) {
+            $otherLocale = $locale === 'ar' ? 'en' : 'ar';
+            $metaTitle = $page->getTranslation('meta_title', $otherLocale) ?: '';
+        }
 
-        $metaTitle = $locale === 'ar' ? ($metaTitleAr ?: $metaTitleEn) : ($metaTitleEn ?: $metaTitleAr);
-        $metaDesc = $locale === 'ar' ? ($metaDescAr ?: $metaDescEn) : ($metaDescEn ?: $metaDescAr);
-        $metaKeywords = $locale === 'ar' ? ($metaKeywordsAr ?: $metaKeywordsEn) : ($metaKeywordsEn ?: $metaKeywordsAr);
+        $metaDesc = $page->getTranslation('meta_description', $locale) ?: (is_array($page->meta_description) ? ($page->meta_description[$locale] ?? '') : (is_string($page->meta_description) ? $page->meta_description : ''));
+        if (empty($metaDesc)) {
+            $otherLocale = $locale === 'ar' ? 'en' : 'ar';
+            $metaDesc = $page->getTranslation('meta_description', $otherLocale) ?: '';
+        }
+
+        $metaKeywords = $page->getTranslation('meta_keywords', $locale) ?: (is_array($page->meta_keywords) ? ($page->meta_keywords[$locale] ?? '') : (is_string($page->meta_keywords) ? $page->meta_keywords : ''));
+        if (empty($metaKeywords)) {
+            $otherLocale = $locale === 'ar' ? 'en' : 'ar';
+            $metaKeywords = $page->getTranslation('meta_keywords', $otherLocale) ?: '';
+        }
 
         return [
             'id' => $page->id,
@@ -65,23 +72,6 @@ class CmsPageController extends Controller
             'meta_title' => $metaTitle,
             'meta_description' => $metaDesc,
             'meta_keywords' => $metaKeywords,
-            'seo' => [
-                'meta_title' => $metaTitle,
-                'meta_description' => $metaDesc,
-                'meta_keywords' => $metaKeywords,
-                'title' => [
-                    'en' => $metaTitleEn,
-                    'ar' => $metaTitleAr,
-                ],
-                'description' => [
-                    'en' => $metaDescEn,
-                    'ar' => $metaDescAr,
-                ],
-                'keywords' => [
-                    'en' => $metaKeywordsEn,
-                    'ar' => $metaKeywordsAr,
-                ],
-            ],
             'updated_at' => $page->updated_at ? $page->updated_at->format('Y-m-d') : null,
         ];
     }

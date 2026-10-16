@@ -248,21 +248,23 @@ class ProductController extends Controller
         $descriptionEn = $product->getTranslation('description', 'en') ?: (is_array($product->description) ? ($product->description['en'] ?? '') : (is_string($product->description) ? $product->description : ''));
         $description = $locale === 'ar' ? ($descriptionAr ?: $descriptionEn) : ($descriptionEn ?: $descriptionAr);
 
-        $metaTitleAr = $product->getTranslation('meta_tag_title', 'ar') ?: (is_array($product->meta_tag_title) ? ($product->meta_tag_title['ar'] ?? '') : (is_string($product->meta_tag_title) ? $product->meta_tag_title : ''));
-        $metaTitleEn = $product->getTranslation('meta_tag_title', 'en') ?: (is_array($product->meta_tag_title) ? ($product->meta_tag_title['en'] ?? '') : (is_string($product->meta_tag_title) ? $product->meta_tag_title : ''));
-        if (empty($metaTitleAr)) $metaTitleAr = $nameAr ? "{$nameAr} | غراس فلوريست" : '';
-        if (empty($metaTitleEn)) $metaTitleEn = $nameEn ? "{$nameEn} | Grass Florist" : '';
-        $metaTitle = $locale === 'ar' ? ($metaTitleAr ?: $metaTitleEn) : ($metaTitleEn ?: $metaTitleAr);
+        $metaTitle = $product->getTranslation('meta_tag_title', $locale) ?: (is_array($product->meta_tag_title) ? ($product->meta_tag_title[$locale] ?? '') : (is_string($product->meta_tag_title) ? $product->meta_tag_title : ''));
+        if (empty($metaTitle)) {
+            $otherLocale = $locale === 'ar' ? 'en' : 'ar';
+            $metaTitle = $product->getTranslation('meta_tag_title', $otherLocale) ?: ($name ? ($locale === 'ar' ? "{$name} | غراس فلوريست" : "{$name} | Grass Florist") : '');
+        }
 
-        $metaDescAr = $product->getTranslation('meta_tag_description', 'ar') ?: (is_array($product->meta_tag_description) ? ($product->meta_tag_description['ar'] ?? '') : (is_string($product->meta_tag_description) ? $product->meta_tag_description : ''));
-        $metaDescEn = $product->getTranslation('meta_tag_description', 'en') ?: (is_array($product->meta_tag_description) ? ($product->meta_tag_description['en'] ?? '') : (is_string($product->meta_tag_description) ? $product->meta_tag_description : ''));
-        if (empty($metaDescAr)) $metaDescAr = $subTitleAr ?: ($descriptionAr ? strip_tags(mb_substr($descriptionAr, 0, 160)) : '');
-        if (empty($metaDescEn)) $metaDescEn = $subTitleEn ?: ($descriptionEn ? strip_tags(mb_substr($descriptionEn, 0, 160)) : '');
-        $metaDesc = $locale === 'ar' ? ($metaDescAr ?: $metaDescEn) : ($metaDescEn ?: $metaDescAr);
+        $metaDesc = $product->getTranslation('meta_tag_description', $locale) ?: (is_array($product->meta_tag_description) ? ($product->meta_tag_description[$locale] ?? '') : (is_string($product->meta_tag_description) ? $product->meta_tag_description : ''));
+        if (empty($metaDesc)) {
+            $otherLocale = $locale === 'ar' ? 'en' : 'ar';
+            $metaDesc = $product->getTranslation('meta_tag_description', $otherLocale) ?: ($subTitle ?: ($description ? strip_tags(mb_substr($description, 0, 160)) : ''));
+        }
 
-        $metaKeywordsAr = $product->getTranslation('meta_tag_keywords', 'ar') ?: (is_array($product->meta_tag_keywords) ? ($product->meta_tag_keywords['ar'] ?? '') : (is_string($product->meta_tag_keywords) ? $product->meta_tag_keywords : ''));
-        $metaKeywordsEn = $product->getTranslation('meta_tag_keywords', 'en') ?: (is_array($product->meta_tag_keywords) ? ($product->meta_tag_keywords['en'] ?? '') : (is_string($product->meta_tag_keywords) ? $product->meta_tag_keywords : ''));
-        $metaKeywords = $locale === 'ar' ? ($metaKeywordsAr ?: $metaKeywordsEn) : ($metaKeywordsEn ?: $metaKeywordsAr);
+        $metaKeywords = $product->getTranslation('meta_tag_keywords', $locale) ?: (is_array($product->meta_tag_keywords) ? ($product->meta_tag_keywords[$locale] ?? '') : (is_string($product->meta_tag_keywords) ? $product->meta_tag_keywords : ''));
+        if (empty($metaKeywords)) {
+            $otherLocale = $locale === 'ar' ? 'en' : 'ar';
+            $metaKeywords = $product->getTranslation('meta_tag_keywords', $otherLocale) ?: '';
+        }
 
         return [
             'id' => $product->id,
@@ -295,23 +297,6 @@ class ProductController extends Controller
             'meta_title' => $metaTitle,
             'meta_description' => $metaDesc,
             'meta_keywords' => $metaKeywords,
-            'seo' => [
-                'meta_title' => $metaTitle,
-                'meta_description' => $metaDesc,
-                'meta_keywords' => $metaKeywords,
-                'title' => [
-                    'en' => $metaTitleEn,
-                    'ar' => $metaTitleAr,
-                ],
-                'description' => [
-                    'en' => $metaDescEn,
-                    'ar' => $metaDescAr,
-                ],
-                'keywords' => [
-                    'en' => $metaKeywordsEn,
-                    'ar' => $metaKeywordsAr,
-                ],
-            ],
             'attributes' => $this->formatProductAttributes($product, $locale),
             'created_at' => $product->created_at?->toIso8601String(),
             'updated_at' => $product->updated_at?->toIso8601String(),

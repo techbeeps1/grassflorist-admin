@@ -116,14 +116,6 @@ class CmsPostController extends Controller
             'categorySlug' => $catSlug,
             'publishedAt' => $post->published_at ? $post->published_at->toISOString() : ($post->created_at ? $post->created_at->toISOString() : now()->toISOString()),
             'readTime' => $readMinutes,
-            'seoTitle' => [
-                'en' => format_translatable($post->meta_title, 'en') ?: "{$titleEn} | Grass Florist",
-                'ar' => format_translatable($post->meta_title, 'ar') ?: "{$titleAr} | غراس فلوريست",
-            ],
-            'seoDescription' => [
-                'en' => format_translatable($post->meta_description, 'en') ?: $shortDescEn,
-                'ar' => format_translatable($post->meta_description, 'ar') ?: $shortDescAr,
-            ],
             'meta_title' => $locale === 'ar'
                 ? (format_translatable($post->meta_title, 'ar') ?: "{$titleAr} | غراس فلوريست")
                 : (format_translatable($post->meta_title, 'en') ?: "{$titleEn} | Grass Florist"),
@@ -133,29 +125,6 @@ class CmsPostController extends Controller
             'meta_keywords' => $locale === 'ar'
                 ? (format_translatable($post->meta_keywords, 'ar') ?: 'زهور, عناية بالزهور, هدايا فاخرة')
                 : (format_translatable($post->meta_keywords, 'en') ?: 'flowers, floral-care, luxury-gifting'),
-            'seo' => [
-                'meta_title' => $locale === 'ar'
-                    ? (format_translatable($post->meta_title, 'ar') ?: "{$titleAr} | غراس فلوريست")
-                    : (format_translatable($post->meta_title, 'en') ?: "{$titleEn} | Grass Florist"),
-                'meta_description' => $locale === 'ar'
-                    ? (format_translatable($post->meta_description, 'ar') ?: $shortDescAr)
-                    : (format_translatable($post->meta_description, 'en') ?: $shortDescEn),
-                'meta_keywords' => $locale === 'ar'
-                    ? (format_translatable($post->meta_keywords, 'ar') ?: 'زهور, عناية بالزهور, هدايا فاخرة')
-                    : (format_translatable($post->meta_keywords, 'en') ?: 'flowers, floral-care, luxury-gifting'),
-                'title' => [
-                    'en' => format_translatable($post->meta_title, 'en') ?: "{$titleEn} | Grass Florist",
-                    'ar' => format_translatable($post->meta_title, 'ar') ?: "{$titleAr} | غراس فلوريست",
-                ],
-                'description' => [
-                    'en' => format_translatable($post->meta_description, 'en') ?: $shortDescEn,
-                    'ar' => format_translatable($post->meta_description, 'ar') ?: $shortDescAr,
-                ],
-                'keywords' => [
-                    'en' => format_translatable($post->meta_keywords, 'en') ?: 'flowers, floral-care, luxury-gifting',
-                    'ar' => format_translatable($post->meta_keywords, 'ar') ?: 'زهور, عناية بالزهور, هدايا فاخرة',
-                ],
-            ],
             'views_count' => (int) $post->views_count,
             'short_description' => $locale === 'ar' ? $shortDescAr : $shortDescEn,
         ];
