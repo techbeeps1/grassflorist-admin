@@ -55,6 +55,52 @@ class Customer extends Authenticatable implements CanResetPasswordContract, JWTS
         ];
     }
 
+    protected static function booted()
+    {
+        static::created(function ($customer) {
+            try {
+                \App\Services\Webhooks\WebhookService::dispatch(
+                    \App\Services\Webhooks\WebhookService::EVENT_USER_REGISTERED,
+                    [
+                        'customer_id' => $customer->id,
+                        'name' => $customer->name,
+                        'first_name' => $customer->first_name,
+                        'last_name' => $customer->last_name,
+                        'email' => $customer->email,
+                        'phone' => $customer->phone,
+                        'city' => $customer->city,
+                        'country' => $customer->country,
+                        'registered_at' => now()->toIso8601String(),
+                    ],
+                    (string)$customer->id,
+                    'App\Models\Customer'
+                );
+            } catch (\Throwable $e) {
+                logger()->error('Webhook user.registered error: ' . $e->getMessage());
+            }
+        });
+
+        static::updated(function ($customer) {
+            try {
+                if ($customer->wasChanged('password')) {
+                    \App\Services\Webhooks\WebhookService::dispatch(
+                        \App\Services\Webhooks\WebhookService::EVENT_USER_PASSWORD_CHANGED,
+                        [
+                            'customer_id' => $customer->id,
+                            'name' => $customer->name,
+                            'email' => $customer->email,
+                            'updated_at' => now()->toIso8601String(),
+                        ],
+                        (string)$customer->id,
+                        'App\Models\Customer'
+                    );
+                }
+            } catch (\Throwable $e) {
+                logger()->error('Webhook user.password_changed error: ' . $e->getMessage());
+            }
+        });
+    }
+
     public function getNameAttribute(): string
     {
         $full = trim(($this->first_name ?? '') . ' ' . ($this->last_name ?? ''));

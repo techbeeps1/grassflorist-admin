@@ -27,6 +27,10 @@ class GlobalSetting extends Model
         'restricted_categories_enabled' => 'boolean',
         'restricted_category_ids' => 'array',
         'qualifying_category_ids' => 'array',
+        'webhook_enabled' => 'boolean',
+        'webhook_events' => 'array',
+        'webhook_headers' => 'array',
+        'webhook_timeout' => 'integer',
     ];
 
     protected $appends = [

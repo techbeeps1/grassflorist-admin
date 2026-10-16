@@ -55,6 +55,49 @@ class User extends Authenticatable implements FilamentUser
         ];
     }
 
+    protected static function booted()
+    {
+        static::created(function ($user) {
+            try {
+                \App\Services\Webhooks\WebhookService::dispatch(
+                    \App\Services\Webhooks\WebhookService::EVENT_USER_REGISTERED,
+                    [
+                        'user_id' => $user->id,
+                        'name' => $user->name,
+                        'email' => $user->email,
+                        'role' => $user->role,
+                        'registered_at' => now()->toIso8601String(),
+                    ],
+                    (string)$user->id,
+                    'App\Models\User'
+                );
+            } catch (\Throwable $e) {
+                logger()->error('Webhook user.registered error: ' . $e->getMessage());
+            }
+        });
+
+        static::updated(function ($user) {
+            try {
+                if ($user->wasChanged('password')) {
+                    \App\Services\Webhooks\WebhookService::dispatch(
+                        \App\Services\Webhooks\WebhookService::EVENT_USER_PASSWORD_CHANGED,
+                        [
+                            'user_id' => $user->id,
+                            'name' => $user->name,
+                            'email' => $user->email,
+                            'role' => $user->role,
+                            'updated_at' => now()->toIso8601String(),
+                        ],
+                        (string)$user->id,
+                        'App\Models\User'
+                    );
+                }
+            } catch (\Throwable $e) {
+                logger()->error('Webhook user.password_changed error: ' . $e->getMessage());
+            }
+        });
+    }
+
 
 
     /**

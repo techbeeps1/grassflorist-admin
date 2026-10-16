@@ -21,6 +21,114 @@ class Order extends Model
                 $order->order_key = 'wc_order_' . \Illuminate\Support\Str::random(20);
             }
         });
+
+        static::created(function ($order) {
+            try {
+                $items = [];
+                if ($order->relationLoaded('items')) {
+                    foreach ($order->items as $item) {
+                        $items[] = [
+                            'product_id' => $item->product_id,
+                            'product_name' => $item->product_name ?? $item->product?->name,
+                            'quantity' => (int) $item->quantity,
+                            'price' => (float) $item->price,
+                            'total' => (float) $item->total,
+                        ];
+                    }
+                }
+                \App\Services\Webhooks\WebhookService::dispatch(
+                    \App\Services\Webhooks\WebhookService::EVENT_ORDER_CREATED,
+                    [
+                        'order_id' => $order->id,
+                        'order_number' => $order->order_number,
+                        'order_key' => $order->order_key,
+                        'status' => $order->status,
+                        'payment_status' => $order->payment_status,
+                        'payment_method' => $order->payment_method,
+                        'total_amount' => (float) $order->total_amount,
+                        'subtotal' => (float) $order->subtotal,
+                        'shipping_amount' => (float) $order->shipping_amount,
+                        'tax_amount' => (float) $order->tax_amount,
+                        'discount_amount' => (float) $order->discount_amount,
+                        'currency' => $order->currency ?: 'SAR',
+                        'customer' => [
+                            'user_id' => $order->user_id,
+                            'name' => trim("{$order->first_name} {$order->last_name}"),
+                            'email' => $order->email,
+                            'phone' => $order->customer_phone,
+                        ],
+                        'shipping' => [
+                            'recipient_name' => $order->recipient_name,
+                            'recipient_phone' => $order->recipient_phone,
+                            'delivery_date' => $order->delivery_date,
+                            'delivery_time' => $order->delivery_time,
+                            'address' => $order->address,
+                            'city' => $order->city,
+                            'district' => $order->district,
+                            'state' => $order->state,
+                            'country' => $order->country,
+                            'notes' => $order->notes,
+                        ],
+                        'items' => $items,
+                        'created_at' => $order->created_at?->toIso8601String(),
+                    ],
+                    $order->order_number ?: (string)$order->id,
+                    'App\Models\Order'
+                );
+            } catch (\Throwable $e) {
+                logger()->error('Webhook order.created dispatch error: ' . $e->getMessage());
+            }
+        });
+
+        static::updated(function ($order) {
+            try {
+                if ($order->wasChanged('status')) {
+                    \App\Services\Webhooks\WebhookService::dispatch(
+                        \App\Services\Webhooks\WebhookService::EVENT_ORDER_STATUS_UPDATED,
+                        [
+                            'order_id' => $order->id,
+                            'order_number' => $order->order_number,
+                            'previous_status' => $order->getOriginal('status'),
+                            'new_status' => $order->status,
+                            'payment_status' => $order->payment_status,
+                            'total_amount' => (float) $order->total_amount,
+                            'currency' => $order->currency ?: 'SAR',
+                            'customer' => [
+                                'name' => trim("{$order->first_name} {$order->last_name}"),
+                                'email' => $order->email,
+                                'phone' => $order->customer_phone,
+                            ],
+                            'updated_at' => now()->toIso8601String(),
+                        ],
+                        $order->order_number ?: (string)$order->id,
+                        'App\Models\Order'
+                    );
+                }
+
+                if ($order->wasChanged('payment_status') && $order->payment_status === 'paid') {
+                    \App\Services\Webhooks\WebhookService::dispatch(
+                        \App\Services\Webhooks\WebhookService::EVENT_ORDER_PAID,
+                        [
+                            'order_id' => $order->id,
+                            'order_number' => $order->order_number,
+                            'payment_method' => $order->payment_method,
+                            'payment_status' => $order->payment_status,
+                            'total_amount' => (float) $order->total_amount,
+                            'currency' => $order->currency ?: 'SAR',
+                            'customer' => [
+                                'name' => trim("{$order->first_name} {$order->last_name}"),
+                                'email' => $order->email,
+                            ],
+                            'date_paid' => $order->date_paid ?: now()->toIso8601String(),
+                        ],
+                        $order->order_number ?: (string)$order->id,
+                        'App\Models\Order'
+                    );
+                }
+            } catch (\Throwable $e) {
+                logger()->error('Webhook order.updated dispatch error: ' . $e->getMessage());
+            }
+        });
     }
 
     public function getOrderKeyAttribute($value)

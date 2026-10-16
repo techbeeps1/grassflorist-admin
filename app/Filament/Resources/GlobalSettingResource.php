@@ -320,6 +320,149 @@ class GlobalSettingResource extends Resource
                                     ])
                                     ->columns(2),
                             ]),
+
+                        // =========================================================================
+                        // TAB 6: WEBHOOKS & 3RD-PARTY INTEGRATIONS (ERP / SAAS / BOTS)
+                        // =========================================================================
+                        Forms\Components\Tabs\Tab::make('Webhooks & Integrations')
+                            ->icon('heroicon-o-signal')
+                            ->schema([
+                                Forms\Components\Section::make('Webhook Dispatcher Settings')
+                                    ->description('Send real-time JSON webhooks to 3rd-party ERPs (Odoo, Zoho, SAP), CRMs, WhatsApp notification bots, Zapier, or custom SaaS platforms.')
+                                    ->schema([
+                                        Forms\Components\Toggle::make('webhook_enabled')
+                                            ->label('Enable Outgoing Webhooks')
+                                            ->helperText('Toggle to activate or deactivate real-time event webhook notifications.')
+                                            ->default(false)
+                                            ->columnSpanFull(),
+
+                                        Forms\Components\TextInput::make('webhook_default_url')
+                                            ->label('Default Webhook Destination URL')
+                                            ->placeholder('https://api.your-erp.com/webhooks/grass-florist or https://webhook.site/...')
+                                            ->url()
+                                            ->helperText('The primary HTTP POST endpoint where all selected events will be delivered.')
+                                            ->columnSpan(2),
+
+                                        Forms\Components\TextInput::make('webhook_timeout')
+                                            ->label('Request Timeout (Seconds)')
+                                            ->numeric()
+                                            ->minValue(2)
+                                            ->maxValue(60)
+                                            ->default(10)
+                                            ->helperText('Maximum seconds to wait for 3rd-party server response before timing out.'),
+
+                                        Forms\Components\TextInput::make('webhook_secret')
+                                            ->label('HMAC Secret Key (Optional Signature)')
+                                            ->password()
+                                            ->revealable()
+                                            ->placeholder('e.g. whsec_9a8b7c6d5e4f3a2b1c')
+                                            ->helperText('If provided, outgoing requests include an HMAC-SHA256 signature in the X-Webhook-Signature header for payload verification.')
+                                            ->columnSpanFull(),
+
+                                        Forms\Components\Actions::make([
+                                            Forms\Components\Actions\Action::make('test_ping')
+                                                ->label('Send Test Ping to Webhook URL')
+                                                ->icon('heroicon-o-paper-airplane')
+                                                ->color('success')
+                                                ->action(function ($get) {
+                                                    $url = $get('webhook_default_url');
+                                                    $res = \App\Services\Webhooks\WebhookService::sendTestPing($url);
+                                                    if ($res['success']) {
+                                                        \Filament\Notifications\Notification::make()
+                                                            ->title('Webhook Test Succeeded')
+                                                            ->body($res['message'])
+                                                            ->success()
+                                                            ->send();
+                                                    } else {
+                                                        \Filament\Notifications\Notification::make()
+                                                            ->title('Webhook Test Failed')
+                                                            ->body($res['message'])
+                                                            ->danger()
+                                                            ->send();
+                                                    }
+                                                }),
+                                        ])->columnSpanFull(),
+                                    ])
+                                    ->columns(3),
+
+                                Forms\Components\Section::make('Trigger Events (Select Actions to Dispatch)')
+                                    ->description('Choose which business events will trigger an automatic webhook POST request.')
+                                    ->schema([
+                                        Forms\Components\CheckboxList::make('webhook_events')
+                                            ->label('Active Event Triggers')
+                                            ->options(\App\Services\Webhooks\WebhookService::getAvailableEvents())
+                                            ->columns(2)
+                                            ->default([
+                                                \App\Services\Webhooks\WebhookService::EVENT_ORDER_CREATED,
+                                                \App\Services\Webhooks\WebhookService::EVENT_ORDER_STATUS_UPDATED,
+                                                \App\Services\Webhooks\WebhookService::EVENT_ORDER_PAID,
+                                                \App\Services\Webhooks\WebhookService::EVENT_USER_REGISTERED,
+                                                \App\Services\Webhooks\WebhookService::EVENT_SUBSCRIPTION_CREATED,
+                                                \App\Services\Webhooks\WebhookService::EVENT_NEWSLETTER_SUBSCRIBED,
+                                                \App\Services\Webhooks\WebhookService::EVENT_USER_PASSWORD_CHANGED,
+                                            ])
+                                            ->helperText('Only checked events will trigger an outgoing webhook notification.')
+                                            ->columnSpanFull(),
+                                    ]),
+
+                                Forms\Components\Section::make('Custom Request Headers')
+                                    ->description('Add authentication tokens or custom headers required by your 3rd-party ERP or SaaS.')
+                                    ->schema([
+                                        Forms\Components\Repeater::make('webhook_headers')
+                                            ->label('Headers List')
+                                            ->schema([
+                                                Forms\Components\TextInput::make('name')
+                                                    ->label('Header Key')
+                                                    ->placeholder('Authorization, X-API-Key, etc.')
+                                                    ->required(),
+                                                Forms\Components\TextInput::make('value')
+                                                    ->label('Header Value')
+                                                    ->placeholder('Bearer eyJ..., token-xyz')
+                                                    ->required(),
+                                            ])
+                                            ->columns(2)
+                                            ->defaultItems(0)
+                                            ->addActionLabel('Add Custom Header')
+                                            ->collapsible(),
+                                    ])
+                                    ->collapsed(),
+
+                                Forms\Components\Section::make('Specific Event URL Overrides (Optional)')
+                                    ->description('By default, all events are sent to the Default Webhook Destination URL. Enter specific URLs below only if you want certain events routed to dedicated endpoints.')
+                                    ->schema([
+                                        Forms\Components\TextInput::make('webhook_order_created_url')
+                                            ->label('Order Created Override URL')
+                                            ->placeholder('Leave empty to use Default Webhook URL')
+                                            ->url(),
+
+                                        Forms\Components\TextInput::make('webhook_order_status_url')
+                                            ->label('Order Status / Paid Override URL')
+                                            ->placeholder('Leave empty to use Default Webhook URL')
+                                            ->url(),
+
+                                        Forms\Components\TextInput::make('webhook_user_registered_url')
+                                            ->label('Customer Registered Override URL')
+                                            ->placeholder('Leave empty to use Default Webhook URL')
+                                            ->url(),
+
+                                        Forms\Components\TextInput::make('webhook_subscription_created_url')
+                                            ->label('Subscription Created Override URL')
+                                            ->placeholder('Leave empty to use Default Webhook URL')
+                                            ->url(),
+
+                                        Forms\Components\TextInput::make('webhook_newsletter_url')
+                                            ->label('Newsletter Subscribed Override URL')
+                                            ->placeholder('Leave empty to use Default Webhook URL')
+                                            ->url(),
+
+                                        Forms\Components\TextInput::make('webhook_password_changed_url')
+                                            ->label('Password Changed Override URL')
+                                            ->placeholder('Leave empty to use Default Webhook URL')
+                                            ->url(),
+                                    ])
+                                    ->columns(2)
+                                    ->collapsed(),
+                            ]),
                     ])
                     ->columnSpanFull(),
             ]);

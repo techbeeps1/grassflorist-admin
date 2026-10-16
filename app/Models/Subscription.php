@@ -103,6 +103,40 @@ class Subscription extends Model
                 $subscription->subscription_number = $candidate;
             }
         });
+
+        static::created(function (Subscription $subscription) {
+            try {
+                \App\Services\Webhooks\WebhookService::dispatch(
+                    \App\Services\Webhooks\WebhookService::EVENT_SUBSCRIPTION_CREATED,
+                    [
+                        'subscription_id' => $subscription->id,
+                        'subscription_number' => $subscription->subscription_number,
+                        'customer_id' => $subscription->customer_id,
+                        'product_id' => $subscription->product_id,
+                        'product_name' => $subscription->product?->name,
+                        'frequency' => $subscription->frequency,
+                        'duration_type' => $subscription->duration_type,
+                        'status' => $subscription->status,
+                        'start_date' => $subscription->start_date?->format('Y-m-d'),
+                        'next_delivery_date' => $subscription->next_delivery_date?->format('Y-m-d'),
+                        'unit_price' => (float) $subscription->unit_price,
+                        'total_per_delivery' => (float) $subscription->total_per_delivery,
+                        'currency' => $subscription->currency ?: 'SAR',
+                        'customer' => [
+                            'name' => $subscription->customer?->name,
+                            'email' => $subscription->customer?->email,
+                            'phone' => $subscription->customer?->phone,
+                        ],
+                        'delivery_address' => $subscription->delivery_address,
+                        'created_at' => $subscription->created_at?->toIso8601String(),
+                    ],
+                    $subscription->subscription_number ?: (string)$subscription->id,
+                    'App\Models\Subscription'
+                );
+            } catch (\Throwable $e) {
+                logger()->error('Webhook subscription.created error: ' . $e->getMessage());
+            }
+        });
     }
 
     /* -------------------------------------------------------------------------- */
