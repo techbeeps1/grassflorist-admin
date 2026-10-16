@@ -159,6 +159,68 @@ Route::prefix('en')->group($registerStoreRoutes);
 // 2. 🇸🇦 Arabic API Endpoints (/api/ar/...)
 Route::prefix('ar')->group($registerStoreRoutes);
 
+// Direct global site & SEO settings (no language prefix required)
+Route::get('/global-settings', [GlobalSettingController::class, 'index']);
+Route::get('/seo-settings', function () {
+    $setting = \App\Models\GlobalSetting::current();
+    return response()->json([
+        'success' => true,
+        'data' => [
+            'sitemap' => [
+                'enabled' => (bool)$setting->sitemap_enabled,
+                'include_products' => (bool)$setting->sitemap_include_products,
+                'include_categories' => (bool)$setting->sitemap_include_categories,
+                'include_static_pages' => (bool)$setting->sitemap_include_static_pages,
+                'include_blog' => (bool)$setting->sitemap_include_blog,
+                'excluded_paths' => $setting->sitemap_excluded_paths
+                    ? array_values(array_filter(array_map('trim', explode("\n", str_replace("\r", "", $setting->sitemap_excluded_paths)))))
+                    : [],
+                'excluded_paths_raw' => $setting->sitemap_excluded_paths,
+            ],
+            'robots' => [
+                'custom_content' => $setting->robots_custom_content,
+            ],
+            'llms' => [
+                'enabled' => (bool)$setting->llms_enabled,
+                'custom_content' => $setting->llms_custom_content,
+            ],
+        ],
+    ]);
+});
+
+// 🗺️ Fast Sitemap Resources (Products & Categories with Arabic/English slugs & lastmod)
+Route::get('/sitemap-resources', function () {
+    $products = \App\Models\Product::visibleToCustomers()
+        ->select(['id', 'slug', 'slug_ar', 'updated_at'])
+        ->get()
+        ->map(function ($p) {
+            return [
+                'id' => $p->id,
+                'slug_en' => $p->slug,
+                'slug_ar' => $p->slug_ar ?: $p->slug,
+                'updated_at' => $p->updated_at?->toIso8601String(),
+            ];
+        });
+
+    $categories = \App\Models\Category::where('is_visible', true)
+        ->select(['id', 'slug', 'slug_ar', 'updated_at'])
+        ->get()
+        ->map(function ($c) {
+            return [
+                'id' => $c->id,
+                'slug_en' => $c->slug,
+                'slug_ar' => $c->slug_ar ?: $c->slug,
+                'updated_at' => $c->updated_at?->toIso8601String(),
+            ];
+        });
+
+    return response()->json([
+        'success' => true,
+        'products' => $products,
+        'categories' => $categories,
+    ]);
+});
+
 // 3. Fallback for non-prefixed API requests: Redirect to /api/ar/... or /api/en/...
 Route::fallback(function (Request $request) {
     $path = trim($request->path(), '/');

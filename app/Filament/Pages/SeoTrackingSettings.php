@@ -117,7 +117,11 @@ class SeoTrackingSettings extends Page implements HasForms
                                         Placeholder::make('sitemap_live_link')
                                             ->label('Live Sitemap Preview')
                                             ->content(function () {
-                                                $url = url('/sitemap.xml');
+                                                $frontendUrl = rtrim(env('FRONTEND_URL', 'https://grassflorist.com'), '/');
+                                                if (app()->environment('local') && (request()->getHost() === '127.0.0.1' || request()->getHost() === 'localhost')) {
+                                                    $frontendUrl = 'http://localhost:3000';
+                                                }
+                                                $url = "{$frontendUrl}/sitemap.xml";
                                                 return new HtmlString("
                                                     <a href='{$url}' target='_blank' class='inline-flex items-center text-primary-600 dark:text-primary-400 hover:underline font-mono text-xs bg-gray-100 dark:bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700'>
                                                         <span>Open Live {$url}</span>

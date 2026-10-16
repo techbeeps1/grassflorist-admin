@@ -290,7 +290,7 @@ class ProductController extends Controller
     public function index(Request $request): JsonResponse
     {
         $locale = $this->getLocale($request);
-        $products = Product::visibleToCustomers()->get();
+        $products = Product::visibleToCustomers()->with(['attributeValues.attribute'])->get();
 
         return response()->json(
             $products->map(fn ($p) => $this->formatCardProduct($p, $locale))->values()

@@ -17,6 +17,15 @@ Route::get('/robots.txt', function () {
         ->header('Content-Type', 'text/plain');
 });
 
+// 🗺️ Sitemap Route: Forwards to Next.js Frontend Sitemap
+Route::get('/sitemap.xml', function () {
+    $frontendUrl = rtrim(env('FRONTEND_URL', 'https://grassflorist.com'), '/');
+    if (app()->environment('local') && (request()->getHost() === '127.0.0.1' || request()->getHost() === 'localhost')) {
+        $frontendUrl = 'http://localhost:3000';
+    }
+    return redirect("{$frontendUrl}/sitemap.xml", 301);
+});
+
 Route::redirect('/', 'admin/login');
 
 Route::view('dashboard', 'dashboard')
