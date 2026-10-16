@@ -234,11 +234,15 @@ class EventBookingResource extends Resource
                             ->visible(fn ($get, $record) => str_contains(mb_strtolower((string)($get('event_type') ?? $record?->event_type)), 'other') || str_contains(mb_strtolower((string)($get('event_type') ?? $record?->event_type)), 'استفسار')),
 
                         // Raw key-value fallback for complete visibility and manual editing
-                        Forms\Components\KeyValue::make('custom_fields')
-                            ->label('Raw Custom Parameters (JSON)')
-                            ->helperText('Direct key-value storage of all dynamic parameters submitted by the client')
-                            ->columnSpanFull()
-                            ->collapsible(),
+                        Forms\Components\Section::make('Raw Custom Parameters (JSON)')
+                            ->description('Direct key-value storage of all dynamic parameters submitted by the client')
+                            ->collapsible()
+                            ->collapsed()
+                            ->schema([
+                                Forms\Components\KeyValue::make('custom_fields')
+                                    ->label('')
+                                    ->columnSpanFull(),
+                            ]),
                     ]),
 
                 Forms\Components\Section::make('Client Vision & Notes')
