@@ -20,7 +20,6 @@ class Category extends Model
         'parent_id',
         'cat_image',
         'is_visible', 
-        'sort_order',
         'description',
         'meta_tag_title',
         'meta_tag_description',
@@ -42,7 +41,6 @@ class Category extends Model
     protected $casts = [
         'meta_data' => 'array',
         'is_visible' => 'boolean',
-        'sort_order' => 'integer',
     ];  
 
     protected static function boot()

@@ -481,6 +481,34 @@ class ProductResource extends Resource
                     ->color('warning')
                     ->sortable(),
 
+                Tables\Columns\TextColumn::make('categories_display')
+                    ->label('Categories')
+                    ->state(function (Product $record) {
+                        $catIds = $record->category_id ?? [];
+                        if (empty($catIds)) return '—';
+                        if (!is_array($catIds)) $catIds = [$catIds];
+
+                        static $catNameMap = null;
+                        if ($catNameMap === null) {
+                            $catNameMap = Category::all()->mapWithKeys(function ($c) {
+                                return [$c->id => format_translatable($c->name, 'en') ?: $c->slug];
+                            })->toArray();
+                        }
+
+                        $names = [];
+                        foreach ($catIds as $cid) {
+                            if (isset($catNameMap[(int)$cid])) {
+                                $names[] = $catNameMap[(int)$cid];
+                            }
+                        }
+                        return !empty($names) ? implode(', ', $names) : '—';
+                    })
+                    ->badge()
+                    ->separator(',')
+                    ->color('info')
+                    ->limit(40)
+                    ->toggleable(),
+
                 Tables\Columns\IconColumn::make('is_visible')
                     ->label('Active')
                     ->boolean(),
@@ -492,6 +520,27 @@ class ProductResource extends Resource
                     ->toggleable(),
             ])
             ->defaultSort('id', 'desc')
+            ->filters([
+                Tables\Filters\SelectFilter::make('category')
+                    ->label('Category')
+                    ->options(function () {
+                        return Category::all()->mapWithKeys(function ($cat) {
+                            $name = format_translatable($cat->name, 'en') ?: $cat->slug;
+                            return [$cat->id => $name];
+                        })->toArray();
+                    })
+                    ->searchable()
+                    ->preload()
+                    ->query(function (Builder $query, array $data) {
+                        $val = $data['value'] ?? null;
+                        if (!empty($val)) {
+                            $query->where(function ($q) use ($val) {
+                                $q->whereJsonContains('category_id', (int) $val)
+                                  ->orWhereJsonContains('category_id', (string) $val);
+                            });
+                        }
+                    }),
+            ])
             ->headerActions([
                 CreateAction::make(),
                 Action::make('sync_wp_products')

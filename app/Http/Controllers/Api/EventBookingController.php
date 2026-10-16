@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\EmailTemplate;
 use App\Models\EventBooking;
+use App\Services\EventBookingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -53,7 +54,17 @@ class EventBookingController extends Controller
         $locale = $validated['locale'] ?? ($request->header('X-Locale') === 'ar' ? 'ar' : 'en');
         $fullName = trim(($validated['first_name'] ?? '') . ' ' . ($validated['last_name'] ?? ''));
 
-        // 1. Save booking to database
+        // 1. Process Guest Count: ONLY applicable for Hall & House weddings
+        $isGuestsApplicable = EventBookingService::isGuestsApplicable($validated['event_type']);
+        $guests = $isGuestsApplicable ? (trim((string)($validated['guests'] ?? '')) ?: null) : null;
+
+        // 2. Extract structured dynamic conditional fields
+        $customFields = EventBookingService::extractCustomFields($validated['event_type'], $request->all());
+
+        // 3. Extract clean user handwritten message (excluding frontend appended text)
+        $cleanMessage = EventBookingService::extractCleanMessage($validated['message']);
+
+        // 4. Save booking to database with structured custom fields
         $booking = EventBooking::create([
             'first_name' => $validated['first_name'],
             'last_name' => $validated['last_name'] ?? null,
@@ -62,34 +73,63 @@ class EventBookingController extends Controller
             'event_type' => $validated['event_type'],
             'location' => $validated['location'],
             'event_date' => $validated['date'] ?? null,
-            'guests' => $validated['guests'] ?? null,
-            'message' => $validated['message'] ?? null,
+            'guests' => $guests,
+            'custom_fields' => !empty($customFields) ? $customFields : null,
+            'message' => $cleanMessage,
             'locale' => $locale,
             'status' => 'new',
             'ip_address' => $request->ip(),
         ]);
 
-        // 2. Fetch configured Email Template from Admin
+        // 5. Fetch configured Email Template from Admin
         $template = EmailTemplate::where('event_key', 'event_booking')
             ->where('is_active', true)
             ->first();
 
         if ($template) {
+            $localizedEventType = EventBookingService::getLocalizedEventType($validated['event_type'], $locale);
+            $customDetailsHtml = EventBookingService::formatCustomDetailsHtml($validated['event_type'], $customFields, $locale);
+            $guestCountRow = EventBookingService::formatGuestCountRow($guests, $locale);
+
+            $notesDisplay = !empty($cleanMessage)
+                ? nl2br(e($cleanMessage))
+                : ($locale === 'ar' ? 'لا توجد ملاحظات إضافية من العميل.' : 'No additional notes provided.');
+
             $shortcodes = [
                 'client_name' => $fullName,
                 'first_name' => $validated['first_name'],
                 'last_name' => $validated['last_name'] ?? '',
                 'phone' => $validated['phone'],
                 'email' => $validated['email'],
-                'event_type' => $validated['event_type'],
-                'event_date' => $validated['date'] ?? 'To be scheduled',
+                'event_type' => $localizedEventType,
+                'event_date' => $validated['date'] ?? ($locale === 'ar' ? 'سيتم التحديد لاحقاً' : 'To be scheduled'),
                 'location' => $validated['location'],
-                'guests' => $validated['guests'] ?? 'N/A',
-                'message' => nl2br(e($validated['message'] ?? 'No additional notes provided.')),
+                'guests' => $guests ?? ($locale === 'ar' ? 'غير محدد' : 'N/A'),
+                'guest_count_row' => $guestCountRow,
+                'custom_details_rows' => $customDetailsHtml,
+                'message' => $notesDisplay,
                 'submission_date' => now()->timezone('Asia/Riyadh')->format('d M Y, h:i A') . ' (KSA)',
             ];
 
             $rendered = $template->render($shortcodes, $locale);
+            $body = $rendered['body'];
+
+            // Fail-safe cleanup: If guest count is NOT applicable, strip any legacy hardcoded guest count table row
+            if (!$isGuestsApplicable || empty($guests)) {
+                $body = preg_replace('/<tr[^>]*>\s*<td[^>]*>(?:Guest Count|عدد الضيوف المتوقع)<\/td>[\s\S]*?<\/tr>/ui', '', $body);
+            }
+
+            // Fail-safe injection: If template did not have {custom_details_rows} placeholder, inject it right after location row
+            if (!str_contains($template->body_en, '{custom_details_rows}') && !empty($customDetailsHtml)) {
+                $body = preg_replace(
+                    '/(<tr[^>]*>\s*<td[^>]*>(?:Venue \/ Location|موقع \/ قاعة المناسبة)<\/td>[\s\S]*?<\/tr>)/ui',
+                    "$1\n" . $customDetailsHtml,
+                    $body,
+                    1
+                );
+            }
+
+            $rendered['body'] = $body;
 
             // A. Send notification to Admin recipients ONLY if configured in the template
             if (!empty(trim((string)$template->notification_emails))) {
@@ -114,7 +154,7 @@ class EventBookingController extends Controller
             if ($template->recipient_type === 'both' && filter_var($validated['email'], FILTER_VALIDATE_EMAIL)) {
                 try {
                     $customerSubject = $locale === 'ar'
-                        ? 'تأكيد استلام طلب استشارة المناسبة - غراس فلوريست'
+                        ? 'تأكيد استلام طلب حجز واستشارة المناسبة - غراس فلوريست'
                         : 'We have received your Event Booking Inquiry - Grass Florist';
 
                     Mail::html($rendered['body'], function ($mail) use ($validated, $customerSubject) {

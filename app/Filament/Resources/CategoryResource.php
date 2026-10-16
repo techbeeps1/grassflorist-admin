@@ -3,7 +3,9 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\CategoryResource\Pages;
+use App\Filament\Resources\ProductResource;
 use App\Models\Category;
+use App\Models\Product;
 use App\Services\StoreImportService;
 use Filament\Forms;
 use Filament\Forms\Components\FileUpload;
@@ -160,12 +162,6 @@ class CategoryResource extends Resource
                                     ->preload()
                                     ->nullable(),
 
-                                TextInput::make('sort_order')
-                                    ->label('Sort Order')
-                                    ->numeric()
-                                    ->default(0)
-                                    ->helperText('Lower numbers appear first. You can also reorder categories by drag & drop on the categories list.'),
-
                                 TextInput::make('source_id')
                                     ->label('WooCommerce ID')
                                     ->disabled()
@@ -190,14 +186,7 @@ class CategoryResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            ->reorderable('sort_order')
-            ->reorderRecordsTriggerAction(fn (Action $action) => 
-                $action->button()
-                    ->label('Reorder Categories (Drag & Drop)')
-                    ->icon('heroicon-m-arrows-up-down')
-                    ->color('primary')
-            )
-            ->defaultSort('sort_order', 'asc')
+            ->defaultSort('id', 'desc')
             ->paginated([25, 50, 100, 'all'])
             ->defaultPaginationPageOption(50)
             ->columns([
@@ -206,12 +195,6 @@ class CategoryResource extends Resource
                     ->disk('public')
                     ->circular()
                     ->defaultImageUrl('/placeholder-category.png'),
-
-                Tables\Columns\TextColumn::make('sort_order')
-                    ->label('Order')
-                    ->sortable()
-                    ->badge()
-                    ->color('info'),
 
                 Tables\Columns\TextColumn::make('id')
                     ->label('ID')
@@ -237,6 +220,38 @@ class CategoryResource extends Resource
                     })
                     ->searchable()
                     ->sortable(),
+
+                Tables\Columns\TextColumn::make('products_count')
+                    ->label('Assigned Products')
+                    ->state(function (Category $record) {
+                        static $categoryProductCounts = null;
+                        if ($categoryProductCounts === null) {
+                            $categoryProductCounts = [];
+                            $all = Product::pluck('category_id');
+                            foreach ($all as $raw) {
+                                $ids = is_array($raw) ? $raw : json_decode($raw, true);
+                                if (is_array($ids)) {
+                                    foreach ($ids as $cid) {
+                                        $cid = (int)$cid;
+                                        $categoryProductCounts[$cid] = ($categoryProductCounts[$cid] ?? 0) + 1;
+                                    }
+                                }
+                            }
+                        }
+                        $count = $categoryProductCounts[$record->id] ?? 0;
+                        return $count . ' ' . ($count === 1 ? 'Product' : 'Products');
+                    })
+                    ->badge()
+                    ->color(fn (string $state): string => !str_starts_with($state, '0') ? 'success' : 'gray')
+                    ->icon('heroicon-m-shopping-bag')
+                    ->tooltip('Click to view and filter assigned products')
+                    ->url(fn (Category $record): string => ProductResource::getUrl('index', [
+                        'tableFilters' => [
+                            'category' => [
+                                'value' => $record->id,
+                            ],
+                        ],
+                    ])),
 
                 Tables\Columns\TextColumn::make('parent.name')
                     ->label('Parent')
@@ -297,6 +312,18 @@ class CategoryResource extends Resource
                     }),
             ])
             ->actions([
+                Tables\Actions\Action::make('view_products')
+                    ->label('View Products')
+                    ->icon('heroicon-m-arrow-top-right-on-square')
+                    ->color('info')
+                    ->tooltip('View products in this category')
+                    ->url(fn (Category $record): string => ProductResource::getUrl('index', [
+                        'tableFilters' => [
+                            'category' => [
+                                'value' => $record->id,
+                            ],
+                        ],
+                    ])),
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make(),
             ])

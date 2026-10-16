@@ -44,10 +44,8 @@ class CmsEventBookingEmailTemplateSeeder extends Seeder
         <td style="padding: 12px 14px; border-bottom: 1px solid #F0EAE1; font-size: 13px; font-weight: 600; color: #685D54; background: #FCFBF9;">Venue / Location</td>
         <td style="padding: 12px 14px; border-bottom: 1px solid #F0EAE1; font-size: 14px; color: #201B18;">📍 {location}</td>
       </tr>
-      <tr>
-        <td style="padding: 12px 14px; border-bottom: 1px solid #F0EAE1; font-size: 13px; font-weight: 600; color: #685D54; background: #FCFBF9;">Guest Count</td>
-        <td style="padding: 12px 14px; border-bottom: 1px solid #F0EAE1; font-size: 14px; color: #201B18;">👥 {guests} Guests</td>
-      </tr>
+{guest_count_row}
+{custom_details_rows}
     </table>
     <div style="font-size: 14px; font-weight: 700; color: #201B18; margin-top: 20px;">Client Vision & Notes:</div>
     <div style="background: #FAF5EE; border-left: 4px solid #8CA841; padding: 16px; border-radius: 8px; margin-top: 10px; font-size: 14px; color: #403630; line-height: 1.6;">
@@ -99,10 +97,8 @@ HTML;
         <td style="padding: 12px 14px; border-bottom: 1px solid #F0EAE1; font-size: 13px; font-weight: 600; color: #685D54; background: #FCFBF9;">موقع / قاعة المناسبة</td>
         <td style="padding: 12px 14px; border-bottom: 1px solid #F0EAE1; font-size: 14px; color: #201B18;">📍 {location}</td>
       </tr>
-      <tr>
-        <td style="padding: 12px 14px; border-bottom: 1px solid #F0EAE1; font-size: 13px; font-weight: 600; color: #685D54; background: #FCFBF9;">عدد الضيوف المتوقع</td>
-        <td style="padding: 12px 14px; border-bottom: 1px solid #F0EAE1; font-size: 14px; color: #201B18;">👥 {guests} ضيف</td>
-      </tr>
+{guest_count_row}
+{custom_details_rows}
     </table>
     <div style="font-size: 14px; font-weight: 700; color: #201B18; margin-top: 20px;">تفاصيل ورؤية العميل للمناسبة:</div>
     <div style="background: #FAF5EE; border-right: 4px solid #8CA841; padding: 16px; border-radius: 8px; margin-top: 10px; font-size: 14px; color: #403630; line-height: 1.6;">
@@ -119,6 +115,11 @@ HTML;
 </div>
 HTML;
 
+        $template = EmailTemplate::where('event_key', 'event_booking')->first();
+
+        // Preserve existing notification emails if configured
+        $notificationEmails = $template?->notification_emails ?: 'asif@techbeeps.com, info@grassflorist.com';
+
         $template = EmailTemplate::updateOrCreate(
             ['event_key' => 'event_booking'],
             [
@@ -128,12 +129,12 @@ HTML;
                 'body_en' => $bodyEn,
                 'body_ar' => $bodyAr,
                 'recipient_type' => 'both',
-                'notification_emails' => 'asif@techbeeps.com, info@grassflorist.com',
-                'allowed_shortcodes' => '{client_name}, {first_name}, {last_name}, {phone}, {email}, {event_type}, {event_date}, {location}, {guests}, {message}',
+                'notification_emails' => $notificationEmails,
+                'allowed_shortcodes' => '{client_name}, {first_name}, {last_name}, {phone}, {email}, {event_type}, {event_date}, {location}, {guests}, {guest_count_row}, {custom_details_rows}, {message}',
                 'is_active' => true,
             ]
         );
 
-        echo "Event Booking Email Template seeded with ID: " . $template->id . PHP_EOL;
+        echo "Event Booking Email Template updated with ID: " . $template->id . PHP_EOL;
     }
 }

@@ -19,9 +19,14 @@ class EventBooking extends Model
         'event_date',
         'guests',
         'message',
+        'custom_fields',
         'locale',
         'status',
         'ip_address',
+    ];
+
+    protected $casts = [
+        'custom_fields' => 'array',
     ];
 
     public function getFullNameAttribute(): string
