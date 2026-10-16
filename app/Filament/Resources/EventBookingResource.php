@@ -7,6 +7,7 @@ use App\Models\EventBooking;
 use App\Services\EventBookingService;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -315,7 +316,22 @@ class EventBookingResource extends Resource
                         'confirmed' => 'Confirmed',
                         'completed' => 'Completed',
                         'cancelled' => 'Cancelled',
-                    ]),
+                    ])
+                    ->afterStateUpdated(function (EventBooking $record, $state) {
+                        $labels = [
+                            'new' => 'New',
+                            'in_progress' => 'In Progress / Contacted',
+                            'confirmed' => 'Confirmed & Booked',
+                            'completed' => 'Event Completed',
+                            'cancelled' => 'Cancelled',
+                        ];
+                        $label = $labels[$state] ?? ucfirst($state);
+                        Notification::make()
+                            ->title('Status updated & email dispatched')
+                            ->body("Booking #{$record->id} updated to '{$label}'. Status notification sent to {$record->email}.")
+                            ->success()
+                            ->send();
+                    }),
 
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Submitted At')

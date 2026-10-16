@@ -30,6 +30,7 @@ class ContactFormRequest extends FormRequest
             'subject' => 'nullable|string|max:255',
             'message' => 'nullable|string',
             'emailMessage' => 'nullable|string',
+            'locale' => 'nullable|string|max:10',
         ];
     }
 }

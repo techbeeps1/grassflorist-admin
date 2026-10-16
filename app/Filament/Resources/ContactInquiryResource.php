@@ -59,6 +59,10 @@ class ContactInquiryResource extends Resource
                         Forms\Components\TextInput::make('ip_address')
                             ->label('IP Address')
                             ->disabled(),
+                        Forms\Components\TextInput::make('locale')
+                            ->label('Submission Language')
+                            ->formatStateUsing(fn ($state) => $state === 'en' ? 'English (الإنجليزية)' : 'Arabic (العربية)')
+                            ->disabled(),
                     ])
                     ->columns(2),
 
@@ -116,6 +120,13 @@ class ContactInquiryResource extends Resource
                     ->placeholder('—')
                     ->url(fn (ContactInquiry $record) => $record->phone ? "tel:{$record->phone}" : null),
 
+                Tables\Columns\TextColumn::make('locale')
+                    ->label('Lang')
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state) => $state === 'en' ? 'EN 🇬🇧' : 'AR 🇸🇦')
+                    ->color(fn (?string $state) => $state === 'en' ? 'info' : 'success')
+                    ->sortable(),
+
                 Tables\Columns\TextColumn::make('subject')
                     ->label('Subject')
                     ->searchable()
@@ -150,6 +161,12 @@ class ContactInquiryResource extends Resource
                         'in_progress' => 'In Progress (قيد المتابعة)',
                         'resolved' => 'Resolved (تم الحل)',
                         'closed' => 'Closed (مغلق)',
+                    ]),
+                Tables\Filters\SelectFilter::make('locale')
+                    ->label('Language')
+                    ->options([
+                        'en' => 'English 🇬🇧',
+                        'ar' => 'العربية 🇸🇦',
                     ]),
             ])
             ->actions([

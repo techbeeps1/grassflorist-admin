@@ -34,6 +34,16 @@ class ContactFormController extends Controller
         $subject = $validated['subject'] ?? null;
         $message = $validated['message'] ?? ($validated['emailMessage'] ?? '');
 
+        $rawLocale = $validated['locale']
+            ?? $request->input('locale')
+            ?? $request->header('X-Locale')
+            ?? app()->getLocale()
+            ?? 'ar';
+
+        $locale = in_array(strtolower(substr((string)$rawLocale, 0, 2)), ['en', 'ar'], true)
+            ? strtolower(substr((string)$rawLocale, 0, 2))
+            : 'ar';
+
         // 1. Save submission to database
         $inquiry = ContactInquiry::create([
             'name' => $name,
@@ -41,6 +51,7 @@ class ContactFormController extends Controller
             'phone' => $phone,
             'subject' => $subject,
             'message' => $message,
+            'locale' => $locale,
             'ip_address' => $request->ip(),
             'status' => 'new',
         ]);
@@ -62,7 +73,7 @@ class ContactFormController extends Controller
         try {
             /** @var \App\Services\Notifications\NotificationService $notificationService */
             $notificationService = app(\App\Services\Notifications\NotificationService::class);
-            $notificationService->sendContactInquiryNotification($inquiry);
+            $notificationService->sendContactInquiryNotification($inquiry, $locale);
         } catch (\Throwable $e) {
             Log::error('[ContactFormController] NotificationService error: ' . $e->getMessage(), [
                 'inquiry_id' => $inquiry->id,
@@ -83,10 +94,15 @@ class ContactFormController extends Controller
             }
         }
 
+        $responseMessage = $locale === 'ar'
+            ? 'تم إرسال رسالتك بنجاح! سيتواصل معك فريق خدمة العملاء قريباً.'
+            : 'Your message has been sent successfully! Our concierge will contact you shortly.';
+
         return response()->json([
             'success' => true,
-            'message' => 'Your message has been sent successfully! Our concierge will contact you shortly.',
+            'message' => $responseMessage,
             'inquiry_id' => $inquiry->id,
+            'locale' => $locale,
         ], 200);
     }
 

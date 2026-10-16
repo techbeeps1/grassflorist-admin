@@ -5,10 +5,12 @@ namespace App\Services\Notifications;
 use App\Models\ContactInquiry;
 use App\Models\ContactPage;
 use App\Models\EmailTemplate;
+use App\Models\EventBooking;
 use App\Models\GlobalSetting;
 use App\Models\NotificationLog;
 use App\Models\Order;
 use App\Models\SmsTemplate;
+use App\Services\EventBookingService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\View;
@@ -860,6 +862,100 @@ class NotificationService
             Log::error("[NotificationService] Account deleted notification failed: " . $e->getMessage(), [
                 'account_id' => $account->id ?? null,
                 'email' => $account->email ?? null,
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
+    }
+
+    /**
+     * Dispatch event booking status change notification email to the client
+     */
+    public function sendEventBookingStatusNotification(
+        EventBooking $booking,
+        string $newStatus,
+        ?string $oldStatus = null
+    ): void {
+        try {
+            if (empty($booking->email) || !filter_var($booking->email, FILTER_VALIDATE_EMAIL)) {
+                Log::warning("[NotificationService] Skipping EventBooking #{$booking->id} status email: No valid email address ({$booking->email}).");
+                return;
+            }
+
+            $locale = $booking->locale ?: 'en';
+            $locale = in_array(strtolower($locale), ['en', 'ar'], true) ? strtolower($locale) : 'en';
+
+            $statusLabels = [
+                'new' => ['en' => 'New Inquiry', 'ar' => 'طلب جديد', 'color' => '#6B7280'],
+                'in_progress' => ['en' => 'In Progress / Contacted', 'ar' => 'قيد المتابعة والتواصل', 'color' => '#2563EB'],
+                'confirmed' => ['en' => 'Confirmed & Booked', 'ar' => 'مؤكد ومحجوز', 'color' => '#16A34A'],
+                'completed' => ['en' => 'Event Completed', 'ar' => 'تمت المناسبة بنجاح', 'color' => '#4F46E5'],
+                'cancelled' => ['en' => 'Cancelled', 'ar' => 'ملغي', 'color' => '#DC2626'],
+            ];
+
+            $newMeta = $statusLabels[$newStatus] ?? ['en' => ucfirst(str_replace('_', ' ', $newStatus)), 'ar' => $newStatus, 'color' => '#6B7280'];
+            $localizedNewStatus = $newMeta[$locale] ?? $newMeta['en'];
+            $badgeColor = $newMeta['color'];
+            $statusBadge = "<span class=\"badge\" style=\"background-color: {$badgeColor}; color: #ffffff; padding: 4px 12px; border-radius: 9999px; font-weight: 600; font-size: 13px; display: inline-block;\">{$localizedNewStatus}</span>";
+
+            $oldMeta = $statusLabels[$oldStatus] ?? null;
+            $localizedOldStatus = $oldMeta ? ($oldMeta[$locale] ?? $oldMeta['en']) : ($oldStatus ?? ($locale === 'ar' ? 'غير محدد' : 'N/A'));
+
+            $clientName = $booking->full_name ?: trim(($booking->first_name ?? '') . ' ' . ($booking->last_name ?? ''));
+            if (empty($clientName)) {
+                $clientName = $locale === 'ar' ? 'العميل العزيز' : 'Valued Client';
+            }
+
+            $localizedEventType = EventBookingService::getLocalizedEventType($booking->event_type, $locale);
+            $eventDate = $booking->event_date ?: ($locale === 'ar' ? 'سيتم التحديد لاحقاً' : 'To be scheduled');
+            $guests = $booking->guests ?: ($locale === 'ar' ? 'غير محدد' : 'N/A');
+
+            $contactPage = ContactPage::first();
+            $contactPhone = $contactPage?->phone ?: '+966 55 513 4211';
+            $contactEmail = $contactPage?->email ?: 'info@grassflorist.com';
+
+            $data = [
+                'client_name' => $clientName,
+                'first_name' => $booking->first_name ?: $clientName,
+                'last_name' => $booking->last_name ?: '',
+                'phone' => $booking->phone ?: 'N/A',
+                'email' => $booking->email,
+                'event_type' => $localizedEventType,
+                'event_date' => $eventDate,
+                'location' => $booking->location ?: ($locale === 'ar' ? 'غير محدد' : 'Not specified'),
+                'guests' => $guests,
+                'status' => $localizedNewStatus,
+                'new_status' => $localizedNewStatus,
+                'old_status' => $localizedOldStatus,
+                'status_badge' => $statusBadge,
+                'contact_phone' => $contactPhone,
+                'contact_email' => $contactEmail,
+                'updated_at' => now()->timezone('Asia/Riyadh')->format('d M Y, h:i A') . ' (KSA)',
+            ];
+
+            // Resolve template: try specific status first (e.g., event_booking_confirmed), then fallback to general status update
+            $eventKey = "event_booking_{$newStatus}";
+            $template = EmailTemplate::where('event_key', $eventKey)->where('is_active', true)->first();
+            if (!$template) {
+                $eventKey = 'event_booking_status_updated';
+                $template = EmailTemplate::where('event_key', $eventKey)->where('is_active', true)->first();
+            }
+
+            if (!$template) {
+                Log::warning("[NotificationService] No active template found for EventBooking status '{$newStatus}' (tried {$eventKey}).");
+                return;
+            }
+
+            $recipients = [$booking->email];
+            if (!empty($template->notification_emails) && in_array($template->recipient_type, ['admin', 'both'])) {
+                $adminEmails = array_values(array_filter(array_map('trim', explode(',', $template->notification_emails))));
+                $recipients = array_unique(array_merge($recipients, $adminEmails));
+            }
+
+            $this->sendEmail($eventKey, $recipients, $data, $locale, null, $booking->ip_address);
+        } catch (\Throwable $e) {
+            Log::error("[NotificationService] EventBooking status notification failed for #{$booking->id}: " . $e->getMessage(), [
+                'booking_id' => $booking->id,
+                'status' => $newStatus,
                 'trace' => $e->getTraceAsString(),
             ]);
         }

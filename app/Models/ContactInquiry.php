@@ -17,6 +17,7 @@ class ContactInquiry extends Model
         'message',
         'ip_address',
         'status',
+        'locale',
         'admin_notes',
     ];
 

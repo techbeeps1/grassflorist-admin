@@ -277,6 +277,27 @@ class StorefrontPaymentController extends Controller
                 }
             }
         } else {
+            $order->payment_status = 'failed';
+            $order->save();
+
+            if (!empty($order->subscription_delivery_id)) {
+                $del = \App\Models\SubscriptionDelivery::find($order->subscription_delivery_id);
+                if ($del && $del->payment_status !== 'paid') {
+                    $del->update([
+                        'payment_status' => 'failed',
+                    ]);
+                }
+            }
+
+            $subscription = $order->subscription ?? ($order->subscription_id ? \App\Models\Subscription::find($order->subscription_id) : null);
+            if ($subscription && $subscription->status === 'pending_payment') {
+                $subscription->increment('consecutive_failed_payments');
+                $subscription->update([
+                    'last_payment_failed_at' => now(),
+                    'last_payment_error' => $res['result_description'] ?? $res['message'] ?? 'Payment verification returned unpaid or declined.',
+                ]);
+            }
+
             \App\Models\PaymentLog::create([
                 'order_id' => $order->id,
                 'order_number' => $order->order_number ?? (string)$order->id,
@@ -291,8 +312,14 @@ class StorefrontPaymentController extends Controller
         }
 
         $freshOrder = $order->fresh(['items', 'subscription']);
+        $isPaid = !empty($res['is_paid']);
+
         return response()->json([
-            'status' => 'success',
+            'status' => $isPaid ? 'success' : 'failed',
+            'is_paid' => $isPaid,
+            'message' => $isPaid
+                ? 'Payment verified successfully.'
+                : ($res['result_description'] ?? $res['message'] ?? 'Payment verification returned unpaid or declined.'),
             'order_id' => $order->id,
             'order_number' => $order->order_number,
             'payment_status' => $freshOrder->payment_status,
