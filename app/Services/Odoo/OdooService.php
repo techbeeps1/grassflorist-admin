@@ -348,13 +348,11 @@ class OdooService
                 );
             } catch (\Throwable $e) {}
 
-            $finalInvoiceUrl = $savedPdfUrl ?: route('orders.tax_invoice', ['id' => $order->id, 'key' => $order->order_key]);
-
             return [
                 'success' => true,
                 'status' => 'synced',
                 'message' => $successMsg,
-                'invoice_pdf_url' => $finalInvoiceUrl,
+                'invoice_pdf_url' => $savedPdfUrl,
             ];
 
         } catch (\Throwable $e) {

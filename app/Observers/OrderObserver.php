@@ -109,18 +109,21 @@ class OrderObserver
             }
         }
 
-        // 3. Trigger Odoo ERP Auto-sync in background queue (Strictly only when order is paid & not already synced)
-        $isPaid = in_array(strtolower((string)$order->payment_status), ['paid', 'completed']);
-        $becamePaid = $isPaid && (
-            $order->isDirty('payment_status') ||
-            ($order->isDirty('status') && strtolower((string)$order->status) === 'processing')
-        );
+        // 3. Trigger Odoo ERP Auto-sync in background queue (Strictly only when enabled & auto-sync is on)
+        $settings = \App\Models\GlobalSetting::current();
+        if (!empty($settings->odoo_enabled) && !empty($settings->odoo_auto_sync_on_paid)) {
+            $isPaid = in_array(strtolower((string)$order->payment_status), ['paid', 'completed']);
+            $becamePaid = $isPaid && (
+                $order->isDirty('payment_status') ||
+                ($order->isDirty('status') && strtolower((string)$order->status) === 'processing')
+            );
 
-        if ($becamePaid && $order->odoo_sync_status !== 'synced') {
-            try {
-                \App\Jobs\SyncOdooOrderJob::dispatch($order->id);
-            } catch (\Throwable $e) {
-                Log::error("[OrderObserver] Failed to dispatch Odoo sync job for Order #{$order->id}: " . $e->getMessage());
+            if ($becamePaid && $order->odoo_sync_status !== 'synced') {
+                try {
+                    \App\Jobs\SyncOdooOrderJob::dispatch($order->id)->afterCommit();
+                } catch (\Throwable $e) {
+                    Log::error("[OrderObserver] Failed to dispatch Odoo sync job for Order #{$order->id}: " . $e->getMessage());
+                }
             }
         }
     }
