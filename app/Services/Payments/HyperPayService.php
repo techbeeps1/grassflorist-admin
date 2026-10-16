@@ -94,9 +94,12 @@ class HyperPayService implements PaymentGatewayInterface
             'billing.postcode' => $order->zip_code ?? '22231',
         ];
 
-        // ⚡ If order contains recurring subscriptions, request card token registration
+        // ⚡ If order contains recurring subscriptions, request card token registration with standing instructions
         if (!empty($order->subscription_id) || !empty($order->meta_data['has_subscription'])) {
             $params['createRegistration'] = 'true';
+            $params['standingInstruction.mode'] = 'INITIAL';
+            $params['standingInstruction.type'] = 'RECURRING';
+            $params['standingInstruction.source'] = 'CIT';
         }
 
         try {
@@ -336,10 +339,14 @@ class HyperPayService implements PaymentGatewayInterface
                 'payload' => $data,
             ]);
 
+            $finalMessage = $isSuccessful
+                ? (($resultCode === '000.000.000') ? 'Payment successful' : ($extendedDesc ?: 'Payment successfully processed'))
+                : ($data['result']['description'] ?? 'Declined');
+
             return [
                 'success' => $isSuccessful,
                 'transaction_id' => $data['id'] ?? null,
-                'message' => $data['result']['description'] ?? ($isSuccessful ? 'Payment successful' : 'Declined'),
+                'message' => $finalMessage,
                 'raw' => $data,
             ];
         } catch (\Throwable $e) {

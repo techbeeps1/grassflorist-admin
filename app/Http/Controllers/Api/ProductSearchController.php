@@ -41,11 +41,12 @@ class ProductSearchController extends Controller
         $query = Product::visibleToCustomers();
         $matchingCategories = collect();
 
-        // 1. Keyword search (searches products AND categories)
-        $searchTerm = $request->input('q', $request->input('key', $request->input('query')));
-        if (!empty($searchTerm) && trim($searchTerm) !== '') {
-            $rawTokens = preg_split('/[\s,\-_+\/]+/u', trim($searchTerm));
-            $tokens = array_values(array_filter($rawTokens, fn ($t) => strlen(trim($t)) > 0));
+        // 1. Keyword search (searches products AND categories with prioritized relevance)
+        $searchTerm = trim((string)$request->input('q', $request->input('key', $request->input('query'))));
+
+        if (!empty($searchTerm)) {
+            $rawTokens = preg_split('/[\s,\-_+\/]+/u', $searchTerm);
+            $tokens = array_values(array_filter($rawTokens, fn ($t) => mb_strlen(trim($t)) >= 2));
 
             // Find matching categories by name, slug, slug_ar, or description
             $matchingCategories = Category::where('is_visible', true)
@@ -61,26 +62,85 @@ class ProductSearchController extends Controller
                                  ->orWhere('slug_ar', 'like', "%{$token}%");
                     }
                 })
-                ->get();
+                ->get()
+                ->sortByDesc(function ($cat) use ($searchTerm) {
+                    $catName = is_array($cat->name) ? json_encode($cat->name, JSON_UNESCAPED_UNICODE) : (string)$cat->name;
+                    return (stripos($catName, $searchTerm) !== false) ? 100 : 10;
+                })
+                ->values();
 
             $matchingCategoryIds = $matchingCategories->pluck('id')->toArray();
 
-            $query->where(function ($subQuery) use ($tokens, $matchingCategoryIds) {
-                // Match products by name, description, sku, slug
+            // Build Relevance Scoring based on Order Priority:
+            // 1. Product Name (10000 full phrase / 1000 per token)
+            // 2. SKU (8000 exact, 6000 substring / 600 per token)
+            // 3. Sub title (4000 full phrase / 400 per token)
+            // 4. Description (2000 full phrase / 200 per token)
+            $scoreCases = [];
+            $bindings = [];
+
+            // Priority 1: Full phrase in Name
+            $scoreCases[] = "CASE WHEN name LIKE ? THEN 10000 ELSE 0 END";
+            $bindings[] = "%{$searchTerm}%";
+
+            // Priority 2: SKU match
+            $scoreCases[] = "CASE WHEN sku = ? THEN 8000 WHEN sku LIKE ? THEN 6000 ELSE 0 END";
+            $bindings[] = $searchTerm;
+            $bindings[] = "%{$searchTerm}%";
+
+            // Priority 3: Full phrase in Subtitle
+            $scoreCases[] = "CASE WHEN sub_title LIKE ? THEN 4000 ELSE 0 END";
+            $bindings[] = "%{$searchTerm}%";
+
+            // Priority 4: Full phrase in Description
+            $scoreCases[] = "CASE WHEN description LIKE ? THEN 2000 ELSE 0 END";
+            $bindings[] = "%{$searchTerm}%";
+
+            // Token-level scoring
+            foreach ($tokens as $token) {
+                // Name token
+                $scoreCases[] = "CASE WHEN name LIKE ? THEN 1000 ELSE 0 END";
+                $bindings[] = "%{$token}%";
+
+                // SKU token
+                $scoreCases[] = "CASE WHEN sku LIKE ? THEN 600 ELSE 0 END";
+                $bindings[] = "%{$token}%";
+
+                // Subtitle token
+                $scoreCases[] = "CASE WHEN sub_title LIKE ? THEN 400 ELSE 0 END";
+                $bindings[] = "%{$token}%";
+
+                // Description token
+                $scoreCases[] = "CASE WHEN description LIKE ? THEN 200 ELSE 0 END";
+                $bindings[] = "%{$token}%";
+            }
+
+            $relevanceSql = '(' . implode(' + ', $scoreCases) . ')';
+
+            $query->select('products.*')
+                  ->selectRaw("{$relevanceSql} as search_relevance", $bindings);
+
+            $query->where(function ($subQuery) use ($searchTerm, $tokens, $matchingCategoryIds) {
+                // Match products by name, description, sku, sub_title, slug
+                $subQuery->where('name', 'like', "%{$searchTerm}%")
+                         ->orWhere('sku', 'like', "%{$searchTerm}%")
+                         ->orWhere('sub_title', 'like', "%{$searchTerm}%")
+                         ->orWhere('description', 'like', "%{$searchTerm}%")
+                         ->orWhere('slug', 'like', "%{$searchTerm}%")
+                         ->orWhere('slug_ar', 'like', "%{$searchTerm}%");
+
                 foreach ($tokens as $token) {
-                    $subQuery->orWhere(function ($q) use ($token) {
-                        $q->where('name', 'like', "%{$token}%")
-                          ->orWhere('description', 'like', "%{$token}%")
-                          ->orWhere('sku', 'like', "%{$token}%")
-                          ->orWhere('slug', 'like', "%{$token}%")
-                          ->orWhere('slug_ar', 'like', "%{$token}%");
-                    });
+                    $subQuery->orWhere('name', 'like', "%{$token}%")
+                             ->orWhere('sku', 'like', "%{$token}%")
+                             ->orWhere('sub_title', 'like', "%{$token}%")
+                             ->orWhere('description', 'like', "%{$token}%");
                 }
 
-                // If any category matches the search term, include all products belonging to it
-                foreach ($matchingCategoryIds as $catId) {
-                    $subQuery->orWhereJsonContains('category_id', (int) $catId)
-                             ->orWhereJsonContains('category_id', (string) $catId);
+                if (!empty($matchingCategoryIds)) {
+                    foreach ($matchingCategoryIds as $catId) {
+                        $subQuery->orWhereJsonContains('category_id', (int) $catId)
+                                 ->orWhereJsonContains('category_id', (string) $catId);
+                    }
                 }
             });
         }
@@ -117,14 +177,23 @@ class ProductSearchController extends Controller
             $query->where('quantity', '>', 0);
         }
 
-        // 5. Sorting
-        $sortField = $request->input('sort_by', 'created_at');
-        $sortDirection = $request->input('sort_dir', 'desc');
-        $allowedSorts = ['created_at', 'price', 'name', 'id'];
-        if (in_array($sortField, $allowedSorts)) {
-            $query->orderBy($sortField, strtolower($sortDirection) === 'asc' ? 'asc' : 'desc');
+        // 5. Sorting (Priority: Search Relevance when searching, unless explicit user sort)
+        if ($request->filled('sort_by') && $request->input('sort_by') !== 'relevance') {
+            $sortField = $request->input('sort_by');
+            $sortDirection = strtolower($request->input('sort_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+            $allowedSorts = ['created_at', 'price', 'name', 'id'];
+            if (in_array($sortField, $allowedSorts)) {
+                $query->orderBy($sortField, $sortDirection);
+            } else {
+                $query->orderBy('created_at', 'desc');
+            }
         } else {
-            $query->orderBy('created_at', 'desc');
+            if (!empty($searchTerm)) {
+                $query->orderByDesc('search_relevance')
+                      ->orderByDesc('created_at');
+            } else {
+                $query->orderBy('created_at', 'desc');
+            }
         }
 
         // 6. Pagination
