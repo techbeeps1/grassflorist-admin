@@ -92,6 +92,22 @@ class CategoryController extends Controller
         $cSlug = ($locale === 'ar' && filled($category->slug_ar)) ? $category->slug_ar : $category->slug;
         $cDesc = $locale === 'ar' ? ($descAr ?: $descEn) : ($descEn ?: $descAr);
 
+        $metaTitleAr = $category->getTranslation('meta_tag_title', 'ar') ?: (is_array($category->meta_tag_title) ? ($category->meta_tag_title['ar'] ?? '') : (is_string($category->meta_tag_title) ? $category->meta_tag_title : ''));
+        $metaTitleEn = $category->getTranslation('meta_tag_title', 'en') ?: (is_array($category->meta_tag_title) ? ($category->meta_tag_title['en'] ?? '') : (is_string($category->meta_tag_title) ? $category->meta_tag_title : ''));
+        if (empty($metaTitleAr)) $metaTitleAr = $nameAr ? "{$nameAr} | غراس فلوريست" : '';
+        if (empty($metaTitleEn)) $metaTitleEn = $nameEn ? "{$nameEn} | Grass Florist" : '';
+        $metaTitle = $locale === 'ar' ? ($metaTitleAr ?: $metaTitleEn) : ($metaTitleEn ?: $metaTitleAr);
+
+        $metaDescAr = $category->getTranslation('meta_tag_description', 'ar') ?: (is_array($category->meta_tag_description) ? ($category->meta_tag_description['ar'] ?? '') : (is_string($category->meta_tag_description) ? $category->meta_tag_description : ''));
+        $metaDescEn = $category->getTranslation('meta_tag_description', 'en') ?: (is_array($category->meta_tag_description) ? ($category->meta_tag_description['en'] ?? '') : (is_string($category->meta_tag_description) ? $category->meta_tag_description : ''));
+        if (empty($metaDescAr)) $metaDescAr = $descAr ?: '';
+        if (empty($metaDescEn)) $metaDescEn = $descEn ?: '';
+        $metaDesc = $locale === 'ar' ? ($metaDescAr ?: $metaDescEn) : ($metaDescEn ?: $metaDescAr);
+
+        $metaKeywordsAr = $category->getTranslation('meta_tag_keywords', 'ar') ?: (is_array($category->meta_tag_keywords) ? ($category->meta_tag_keywords['ar'] ?? '') : (is_string($category->meta_tag_keywords) ? $category->meta_tag_keywords : ''));
+        $metaKeywordsEn = $category->getTranslation('meta_tag_keywords', 'en') ?: (is_array($category->meta_tag_keywords) ? ($category->meta_tag_keywords['en'] ?? '') : (is_string($category->meta_tag_keywords) ? $category->meta_tag_keywords : ''));
+        $metaKeywords = $locale === 'ar' ? ($metaKeywordsAr ?: $metaKeywordsEn) : ($metaKeywordsEn ?: $metaKeywordsAr);
+
         return [
             'id' => $category->id,
             'name' => $cName,
@@ -102,6 +118,26 @@ class CategoryController extends Controller
             'image' => $catImgUrl ?: $catImg,
             'image_path' => $catImg,
             'is_visible' => (bool) $category->is_visible,
+            'meta_title' => $metaTitle,
+            'meta_description' => $metaDesc,
+            'meta_keywords' => $metaKeywords,
+            'seo' => [
+                'meta_title' => $metaTitle,
+                'meta_description' => $metaDesc,
+                'meta_keywords' => $metaKeywords,
+                'title' => [
+                    'en' => $metaTitleEn,
+                    'ar' => $metaTitleAr,
+                ],
+                'description' => [
+                    'en' => $metaDescEn,
+                    'ar' => $metaDescAr,
+                ],
+                'keywords' => [
+                    'en' => $metaKeywordsEn,
+                    'ar' => $metaKeywordsAr,
+                ],
+            ],
             'child' => $children,
         ];
     }

@@ -248,6 +248,22 @@ class ProductController extends Controller
         $descriptionEn = $product->getTranslation('description', 'en') ?: (is_array($product->description) ? ($product->description['en'] ?? '') : (is_string($product->description) ? $product->description : ''));
         $description = $locale === 'ar' ? ($descriptionAr ?: $descriptionEn) : ($descriptionEn ?: $descriptionAr);
 
+        $metaTitleAr = $product->getTranslation('meta_tag_title', 'ar') ?: (is_array($product->meta_tag_title) ? ($product->meta_tag_title['ar'] ?? '') : (is_string($product->meta_tag_title) ? $product->meta_tag_title : ''));
+        $metaTitleEn = $product->getTranslation('meta_tag_title', 'en') ?: (is_array($product->meta_tag_title) ? ($product->meta_tag_title['en'] ?? '') : (is_string($product->meta_tag_title) ? $product->meta_tag_title : ''));
+        if (empty($metaTitleAr)) $metaTitleAr = $nameAr ? "{$nameAr} | غراس فلوريست" : '';
+        if (empty($metaTitleEn)) $metaTitleEn = $nameEn ? "{$nameEn} | Grass Florist" : '';
+        $metaTitle = $locale === 'ar' ? ($metaTitleAr ?: $metaTitleEn) : ($metaTitleEn ?: $metaTitleAr);
+
+        $metaDescAr = $product->getTranslation('meta_tag_description', 'ar') ?: (is_array($product->meta_tag_description) ? ($product->meta_tag_description['ar'] ?? '') : (is_string($product->meta_tag_description) ? $product->meta_tag_description : ''));
+        $metaDescEn = $product->getTranslation('meta_tag_description', 'en') ?: (is_array($product->meta_tag_description) ? ($product->meta_tag_description['en'] ?? '') : (is_string($product->meta_tag_description) ? $product->meta_tag_description : ''));
+        if (empty($metaDescAr)) $metaDescAr = $subTitleAr ?: ($descriptionAr ? strip_tags(mb_substr($descriptionAr, 0, 160)) : '');
+        if (empty($metaDescEn)) $metaDescEn = $subTitleEn ?: ($descriptionEn ? strip_tags(mb_substr($descriptionEn, 0, 160)) : '');
+        $metaDesc = $locale === 'ar' ? ($metaDescAr ?: $metaDescEn) : ($metaDescEn ?: $metaDescAr);
+
+        $metaKeywordsAr = $product->getTranslation('meta_tag_keywords', 'ar') ?: (is_array($product->meta_tag_keywords) ? ($product->meta_tag_keywords['ar'] ?? '') : (is_string($product->meta_tag_keywords) ? $product->meta_tag_keywords : ''));
+        $metaKeywordsEn = $product->getTranslation('meta_tag_keywords', 'en') ?: (is_array($product->meta_tag_keywords) ? ($product->meta_tag_keywords['en'] ?? '') : (is_string($product->meta_tag_keywords) ? $product->meta_tag_keywords : ''));
+        $metaKeywords = $locale === 'ar' ? ($metaKeywordsAr ?: $metaKeywordsEn) : ($metaKeywordsEn ?: $metaKeywordsAr);
+
         return [
             'id' => $product->id,
             'sku' => $product->sku,
@@ -275,6 +291,26 @@ class ProductController extends Controller
                 'type' => $product->type ?: 'simple',
                 'weight' => $product->meta_data['weight'] ?? null,
                 'dimensions' => $product->meta_data['dimensions'] ?? null,
+            ],
+            'meta_title' => $metaTitle,
+            'meta_description' => $metaDesc,
+            'meta_keywords' => $metaKeywords,
+            'seo' => [
+                'meta_title' => $metaTitle,
+                'meta_description' => $metaDesc,
+                'meta_keywords' => $metaKeywords,
+                'title' => [
+                    'en' => $metaTitleEn,
+                    'ar' => $metaTitleAr,
+                ],
+                'description' => [
+                    'en' => $metaDescEn,
+                    'ar' => $metaDescAr,
+                ],
+                'keywords' => [
+                    'en' => $metaKeywordsEn,
+                    'ar' => $metaKeywordsAr,
+                ],
             ],
             'attributes' => $this->formatProductAttributes($product, $locale),
             'created_at' => $product->created_at?->toIso8601String(),

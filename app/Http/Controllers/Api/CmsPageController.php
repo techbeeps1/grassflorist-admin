@@ -44,6 +44,17 @@ class CmsPageController extends Controller
             }
         }
 
+        $metaTitleAr = $page->getTranslation('meta_title', 'ar') ?: (is_array($page->meta_title) ? ($page->meta_title['ar'] ?? '') : (is_string($page->meta_title) ? $page->meta_title : ''));
+        $metaTitleEn = $page->getTranslation('meta_title', 'en') ?: (is_array($page->meta_title) ? ($page->meta_title['en'] ?? '') : (is_string($page->meta_title) ? $page->meta_title : ''));
+        $metaDescAr = $page->getTranslation('meta_description', 'ar') ?: (is_array($page->meta_description) ? ($page->meta_description['ar'] ?? '') : (is_string($page->meta_description) ? $page->meta_description : ''));
+        $metaDescEn = $page->getTranslation('meta_description', 'en') ?: (is_array($page->meta_description) ? ($page->meta_description['en'] ?? '') : (is_string($page->meta_description) ? $page->meta_description : ''));
+        $metaKeywordsAr = $page->getTranslation('meta_keywords', 'ar') ?: (is_array($page->meta_keywords) ? ($page->meta_keywords['ar'] ?? '') : (is_string($page->meta_keywords) ? $page->meta_keywords : ''));
+        $metaKeywordsEn = $page->getTranslation('meta_keywords', 'en') ?: (is_array($page->meta_keywords) ? ($page->meta_keywords['en'] ?? '') : (is_string($page->meta_keywords) ? $page->meta_keywords : ''));
+
+        $metaTitle = $locale === 'ar' ? ($metaTitleAr ?: $metaTitleEn) : ($metaTitleEn ?: $metaTitleAr);
+        $metaDesc = $locale === 'ar' ? ($metaDescAr ?: $metaDescEn) : ($metaDescEn ?: $metaDescAr);
+        $metaKeywords = $locale === 'ar' ? ($metaKeywordsAr ?: $metaKeywordsEn) : ($metaKeywordsEn ?: $metaKeywordsAr);
+
         return [
             'id' => $page->id,
             'title' => $page->getTranslation('title', $locale) ?: (is_array($page->title) ? ($page->title[$locale] ?? reset($page->title)) : $page->title),
@@ -51,10 +62,25 @@ class CmsPageController extends Controller
             'short_description' => $page->getTranslation('short_description', $locale) ?: (is_array($page->short_description) ? ($page->short_description[$locale] ?? '') : $page->short_description),
             'content' => $page->getTranslation('content', $locale) ?: (is_array($page->content) ? ($page->content[$locale] ?? '') : $page->content),
             'banner_images' => $banners,
+            'meta_title' => $metaTitle,
+            'meta_description' => $metaDesc,
+            'meta_keywords' => $metaKeywords,
             'seo' => [
-                'meta_title' => $page->getTranslation('meta_title', $locale) ?: $page->meta_title,
-                'meta_description' => $page->getTranslation('meta_description', $locale) ?: $page->meta_description,
-                'meta_keywords' => $page->getTranslation('meta_keywords', $locale) ?: $page->meta_keywords,
+                'meta_title' => $metaTitle,
+                'meta_description' => $metaDesc,
+                'meta_keywords' => $metaKeywords,
+                'title' => [
+                    'en' => $metaTitleEn,
+                    'ar' => $metaTitleAr,
+                ],
+                'description' => [
+                    'en' => $metaDescEn,
+                    'ar' => $metaDescAr,
+                ],
+                'keywords' => [
+                    'en' => $metaKeywordsEn,
+                    'ar' => $metaKeywordsAr,
+                ],
             ],
             'updated_at' => $page->updated_at ? $page->updated_at->format('Y-m-d') : null,
         ];
